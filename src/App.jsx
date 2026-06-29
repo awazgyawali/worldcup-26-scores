@@ -74,7 +74,7 @@ const R32_SLOT_TO_JSON_NUM = [
 
 const makeTeam = (jsonName, index) => {
   const name = TEAM_DISPLAY[jsonName] || jsonName;
-  const iso2 = TEAM_ISO2[jsonName] || TEAM_ISO2[name] || "un";
+  const iso2 = isoForName(jsonName === name ? name : jsonName) || isoForName(name);
   return { id: `${iso2}-${index}`, name, iso2 };
 };
 
@@ -99,6 +99,12 @@ const ROUNDS = [
 ];
 const FINAL_ROUND = ROUNDS.length - 1;
 const key = (r, m) => `${r}-${m}`;
+/** Rows per bracket half — all rounds + connectors share this vertical grid. */
+const BRACKET_ROWS = 8;
+/** Every match card uses the same width:height ratio across R32 → Final. */
+const MATCH_CARD_ASPECT = 1.6;
+/** Card height as a fraction of one bracket row (R32 slot). */
+const MATCH_CARD_ROW_FRAC = 0.9;
 
 // ----------------------------------------------------------------------------
 // LIVE DATA — openfootball/worldcup.json (knockout scores + kickoffs)
@@ -204,7 +210,13 @@ const formatMatchTime = (d) => {
 const isoForName = (name) => {
   if (!name) return "un";
   const display = TEAM_DISPLAY[name] || name;
-  return TEAM_ISO2[name] || TEAM_ISO2[display] || "un";
+  if (TEAM_ISO2[name]) return TEAM_ISO2[name];
+  if (TEAM_ISO2[display]) return TEAM_ISO2[display];
+  const n = normTeam(name);
+  for (const [key, iso] of Object.entries(TEAM_ISO2)) {
+    if (normTeam(key) === n) return iso;
+  }
+  return "un";
 };
 
 const buildTeamHistories = (allMatches, byNum) => {
@@ -449,7 +461,8 @@ const buildActualWinners = (teams) => {
 };
 
 const STORAGE_KEY = "wc26-bracket-winners-v3";
-const ACCENT = "#34d399"; // single accent color for the active pick
+const ACCENT = "#52b87a";
+const ACCENT_DIM = "rgba(109, 127, 150, 0.35)";
 
 // ----------------------------------------------------------------------------
 // BRACKET LOGIC
@@ -527,33 +540,32 @@ function WCLogo({ className = "" }) {
   return (
     <svg viewBox="0 0 48 48" className={className} role="img" aria-label="World Cup 26">
       <defs>
-        <linearGradient id="wcBadge" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#34d399" />
-          <stop offset="100%" stopColor="#0d9488" />
+        <linearGradient id="wcRing" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#d4a84b" />
+          <stop offset="100%" stopColor="#a67c2e" />
         </linearGradient>
-        <linearGradient id="wcCup" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fde68a" />
-          <stop offset="100%" stopColor="#f59e0b" />
+        <linearGradient id="wcInner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#1c2a3d" />
+          <stop offset="100%" stopColor="#111a27" />
         </linearGradient>
       </defs>
-      <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#wcBadge)" />
-      <rect x="2" y="2" width="44" height="44" rx="13" fill="none" stroke="rgba(255,255,255,0.25)" />
-      {/* trophy */}
-      <g fill="url(#wcCup)">
-        <path d="M17 11h14v6a7 7 0 0 1-14 0v-6Z" />
-        <path d="M15 12.5h-3.2a3.2 3.2 0 0 0 3.7 3.7l-.5-1.9a1.3 1.3 0 0 1-1.5-1.5H15v-.3Zm18 0h3.2a3.2 3.2 0 0 1-3.7 3.7l.5-1.9a1.3 1.3 0 0 0 1.5-1.5H33v-.3Z" />
-        <rect x="22.4" y="23" width="3.2" height="4" />
-        <rect x="18.5" y="26.5" width="11" height="2.6" rx="1.3" />
+      <circle cx="24" cy="24" r="22" fill="none" stroke="url(#wcRing)" strokeWidth="2.5" />
+      <circle cx="24" cy="24" r="18" fill="url(#wcInner)" stroke="rgba(240,235,227,0.08)" strokeWidth="1" />
+      <g fill="#d4a84b">
+        <path d="M18 14h12v5.5a6 6 0 0 1-12 0V14Z" />
+        <path d="M16.5 15.2h-2.8a2.8 2.8 0 0 0 3.2 3.2l-.4-1.6a1.1 1.1 0 0 1-1.3-1.3h1.3v-.3Zm15 0h2.8a2.8 2.8 0 0 1-3.2 3.2l.4-1.6a1.1 1.1 0 0 0 1.3-1.3h-1.5v-.3Z" />
+        <rect x="22.5" y="24.5" width="3" height="3.5" rx="0.5" />
+        <rect x="19" y="27.5" width="10" height="2.2" rx="1.1" />
       </g>
       <text
         x="24"
-        y="40"
+        y="38.5"
         textAnchor="middle"
-        fontSize="9"
-        fontWeight="900"
-        fill="#ffffff"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-        letterSpacing="0.5"
+        fontSize="10"
+        fontWeight="400"
+        fill="#f0ebe3"
+        fontFamily="Bebas Neue, sans-serif"
+        letterSpacing="1.5"
       >
         26
       </text>
@@ -562,8 +574,8 @@ function WCLogo({ className = "" }) {
 }
 
 // ----------------------------------------------------------------------------
-// SVG CONNECTORS — percentage geometry + non-scaling stroke means the lines
-// always meet the justify-around card centers at any column height.
+// SVG CONNECTORS — percentage geometry on an 8-row bracket grid; non-scaling stroke
+// keeps line weight constant. Match centers sit at (i + 0.5) / count within each column.
 // ----------------------------------------------------------------------------
 function Connector({ count, side, active }) {
   // `count` source matches on this side merge into count/2 targets.
@@ -581,7 +593,7 @@ function Connector({ count, side, active }) {
         d={d}
         fill="none"
         strokeWidth={active?.[i] ? 2 : 1.25}
-        stroke={active?.[i] ? ACCENT : "rgba(148,163,184,0.28)"}
+        stroke={active?.[i] ? ACCENT : ACCENT_DIM}
         vectorEffect="non-scaling-stroke"
         style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
       />
@@ -624,7 +636,7 @@ function SFFinalConnector({ side, active }) {
           d={d}
           fill="none"
           strokeWidth={active ? 2 : 1.25}
-          stroke={active ? ACCENT : "rgba(148,163,184,0.28)"}
+          stroke={active ? ACCENT : ACCENT_DIM}
           vectorEffect="non-scaling-stroke"
           style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
         />
@@ -636,17 +648,11 @@ function SFFinalConnector({ side, active }) {
 // ----------------------------------------------------------------------------
 // TEAM ROW + MATCH CARD
 // ----------------------------------------------------------------------------
-function LiveIndicator({ large = false }) {
+function LiveIndicator() {
   return (
-    <div
-      className={[
-        "flex items-center justify-center gap-1.5 font-bold uppercase tracking-[0.14em] text-rose-300",
-        large ? "py-1 text-[11px]" : "py-0.5 text-[9px]",
-      ].join(" ")}
-    >
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-400" />
+    <div className="flex items-center justify-center gap-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em] text-[var(--live)]">
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="live-dot absolute inline-flex h-full w-full rounded-full bg-[var(--live)]" />
       </span>
       Live
     </div>
@@ -677,7 +683,7 @@ function TeamHistoryModal({ team, matches, onClose }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--bg-deep)]/85 p-4 backdrop-blur-md"
         onClick={onClose}
       >
         <motion.div
@@ -685,26 +691,28 @@ function TeamHistoryModal({ team, matches, onClose }) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 8 }}
           transition={{ duration: 0.25, ease: "easeOut" }}
-          className="flex max-h-[min(85vh,640px)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-[#0c1028] shadow-2xl ring-1 ring-white/10"
+          className="flex max-h-[min(85vh,640px)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3.5">
+          <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5">
             <img
               src={flagSrc(team.iso2)}
               srcSet={flagSrcSet(team.iso2)}
               alt=""
-              className="h-9 w-12 rounded-[4px] object-cover shadow ring-1 ring-black/40"
+              className="h-10 w-14 rounded-sm object-cover shadow-md ring-1 ring-black/40"
             />
             <div className="min-w-0 flex-1">
-              <h2 className="truncate text-lg font-extrabold tracking-tight text-white">{team.name}</h2>
-              <p className="text-[11px] text-slate-500">
+              <h2 className="font-display truncate text-2xl tracking-wide text-[var(--text-primary)]">
+                {team.name}
+              </h2>
+              <p className="text-[11px] font-medium text-[var(--text-muted)]">
                 {played > 0 ? `${wins}W · ${played} played` : "Tournament results"}
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/5 text-slate-400 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+              className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm"
               aria-label="Close"
             >
               ✕
@@ -725,12 +733,12 @@ function TeamHistoryModal({ team, matches, onClose }) {
                     <li
                       key={`${m.date}-${m.opponent}-${i}`}
                       className={[
-                        "rounded-xl px-3 py-2.5 ring-1",
+                        "rounded-lg border px-3 py-2.5",
                         won
-                          ? "bg-emerald-500/[0.07] ring-emerald-400/20"
+                          ? "border-[color-mix(in_oklch,var(--pitch-glow)_30%,transparent)] bg-[color-mix(in_oklch,var(--pitch)_12%,transparent)]"
                           : lost
-                          ? "bg-rose-500/[0.06] ring-rose-400/15"
-                          : "bg-white/[0.03] ring-white/8",
+                          ? "border-[color-mix(in_oklch,var(--live)_20%,transparent)] bg-[color-mix(in_oklch,var(--live)_6%,transparent)]"
+                          : "border-[var(--border)] bg-[var(--bg-elevated)]",
                       ].join(" ")}
                     >
                       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -802,39 +810,26 @@ function TeamRow({
   align,
   locked,
   score,
-  large = false,
   showScoreSlot = true,
 }) {
   const empty = !team;
   const disabled = empty || locked; // can't pick until both teams are set
   const right = align === "right";
 
-  // verdict: undefined | "correct" | "wrong"  (results-reveal state)
-  let ring = "ring-1 ring-white/5";
-  let bg = "bg-white/[0.02]";
-  let text = "text-slate-200";
+  let stripClass = "team-strip";
+  let text = "text-[var(--text-secondary)]";
   if (isWinner) {
-    ring = "ring-1 ring-emerald-400/60";
-    bg = "bg-emerald-400/10";
-    text = "text-white";
+    stripClass += right ? " team-strip--winner team-strip--right" : " team-strip--winner";
+    text = "text-[var(--text-primary)] font-semibold";
   }
-  if (isLoser) {
-    text = "text-slate-500";
-    bg = "bg-transparent";
-  }
+  if (isLoser) text = "text-[var(--text-muted)]";
   if (verdict === "correct") {
-    ring = "ring-1 ring-emerald-400/70";
-    bg = "bg-emerald-500/20";
-    text = "text-emerald-100";
+    stripClass += right ? " team-strip--winner team-strip--right" : " team-strip--winner";
+    text = "text-[var(--pitch-glow)] font-semibold";
   } else if (verdict === "wrong") {
-    ring = "ring-1 ring-rose-500/60";
-    bg = "bg-rose-500/15";
-    text = "text-rose-300 line-through decoration-rose-400/60";
+    text = "text-[var(--live)] line-through decoration-[var(--live)]/50";
   } else if (verdict === "missed") {
-    // The team that actually won, when the user picked the other one.
-    ring = "ring-1 ring-emerald-400/40";
-    bg = "bg-emerald-400/[0.06]";
-    text = "text-emerald-200/80";
+    text = "text-[var(--pitch-glow)]/80";
   }
 
   return (
@@ -844,25 +839,17 @@ function TeamRow({
       onClick={() => !disabled && team && onPick(team)}
       title={locked && !empty ? "Both teams must be decided first" : undefined}
       className={[
-        "group/row relative flex w-full items-center rounded-lg transition-all duration-200",
-        large ? "gap-2 px-3 py-2" : "gap-2.5 px-2.5 py-1.5",
+        "group/row relative flex w-full items-center rounded-sm transition-all duration-200",
+        "gap-1.5 px-1.5 py-0.5",
         right ? "flex-row-reverse text-right" : "text-left",
-        empty
-          ? "cursor-default"
-          : locked
-          ? "cursor-not-allowed"
-          : "cursor-pointer hover:bg-white/[0.06]",
-        ring,
-        bg,
+        stripClass,
+        right && isWinner ? "team-strip--right" : "",
+        empty ? "cursor-default" : locked ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+        text,
       ].join(" ")}
     >
       {empty ? (
-        <span
-          className={[
-            "grid shrink-0 place-items-center rounded-[3px] bg-white/5 font-bold text-slate-500",
-            large ? "h-8 w-11 text-sm" : "h-5 w-7 text-[11px]",
-          ].join(" ")}
-        >
+        <span className="grid h-5 w-7 shrink-0 place-items-center rounded-sm bg-[var(--bg-elevated)] text-[10px] font-bold text-[var(--text-muted)]">
           ?
         </span>
       ) : (
@@ -873,17 +860,14 @@ function TeamRow({
             onFlagClick?.(team);
           }}
           title="View match history"
-          className={[
-            "shrink-0 rounded-[3px] shadow ring-1 ring-black/30 transition hover:ring-emerald-400/50 hover:brightness-110",
-            large ? "h-8 w-11" : "h-5 w-7",
-          ].join(" ")}
+          className="h-5 w-7 shrink-0 overflow-hidden rounded-sm shadow-sm ring-1 ring-black/40 transition hover:ring-[var(--gold)]/50 hover:brightness-110"
         >
           <img
             src={flagSrc(team.iso2)}
             srcSet={flagSrcSet(team.iso2)}
             alt=""
-          width={large ? 44 : 28}
-          height={large ? 32 : 20}
+          width={28}
+          height={20}
             loading="lazy"
             className="pointer-events-none h-full w-full rounded-[3px] object-cover"
           />
@@ -892,27 +876,26 @@ function TeamRow({
 
       <span
         className={[
-          "min-w-0 flex-1 font-semibold tracking-tight",
-            large ? "text-[14px] leading-tight" : "truncate text-[13px]",
+          "min-w-0 flex-1 truncate font-semibold tracking-tight text-[12px] leading-tight",
           text,
         ].join(" ")}
       >
-        {empty ? <span className="text-slate-600">TBD</span> : team.name}
+        {empty ? <span className="text-[var(--text-muted)]">TBD</span> : team.name}
       </span>
 
       {/* check / verdict marker */}
       <span className="flex w-4 shrink-0 items-center justify-center">
         {verdict === "correct" ? (
-          <span className="text-emerald-300">✓</span>
+          <span className="text-[var(--pitch-glow)]">✓</span>
         ) : verdict === "wrong" ? (
-          <span className="text-rose-300">✕</span>
+          <span className="text-[var(--live)]">✕</span>
         ) : verdict === "missed" ? (
-          <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-300/70">won</span>
+          <span className="text-[8px] font-bold uppercase tracking-wide text-[var(--pitch-glow)]/70">won</span>
         ) : isWinner ? (
           <motion.span
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-emerald-300"
+            className="text-[var(--pitch-glow)]"
           >
             ✓
           </motion.span>
@@ -922,13 +905,12 @@ function TeamRow({
       {showScoreSlot && (
       <span
         className={[
-          "grid shrink-0 place-items-center rounded-[4px] font-bold tabular-nums ring-1",
-          large ? "h-7 w-8 text-sm" : "h-5 w-6 text-[11px]",
+          "grid h-5 w-6 shrink-0 place-items-center rounded-sm font-bold tabular-nums",
           score != null
             ? isWinner
-              ? "bg-emerald-500/20 text-emerald-100 ring-emerald-400/30"
-              : "bg-black/30 text-slate-200 ring-white/5"
-            : "bg-black/30 text-slate-400 ring-white/5",
+              ? "bg-[color-mix(in_oklch,var(--pitch)_25%,transparent)] text-[var(--text-primary)]"
+              : "bg-[var(--bg-deep)] text-[var(--text-secondary)]"
+            : "bg-[var(--bg-deep)] text-[var(--text-muted)]",
         ].join(" ")}
       >
         {score != null ? score : "–"}
@@ -949,7 +931,6 @@ function MatchCard({
   align = "left",
   fluid = false,
   live,
-  large = false,
   highlight = null,
   onFlagClick,
 }) {
@@ -986,15 +967,15 @@ function MatchCard({
 
   return (
     <motion.div
-      layout
+      layout={!fluid}
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
       className={[
-        "relative flex rounded-xl",
-        fluid ? "w-full min-h-0 flex-1" : "w-[182px] sm:w-[206px]",
-        large ? "p-2" : "p-1.5",
-        "flex-col backdrop-blur-md ring-1",
+        "relative flex shrink-0 flex-col rounded-xl p-1.5 backdrop-blur-md ring-1",
+        fluid
+          ? "aspect-[8/5] w-full"
+          : "h-[var(--match-card-h)] w-[var(--match-card-w)]",
         "shadow-[0_8px_28px_-12px_rgba(0,0,0,0.8)]",
         highlight === "live"
           ? "bg-rose-500/12 ring-2 ring-rose-400/55 shadow-[0_0_28px_-6px_rgba(244,63,94,0.45)]"
@@ -1005,21 +986,13 @@ function MatchCard({
       ].join(" ")}
     >
       {highlight === "next" && (
-        <div
-          className={[
-            "pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-sky-500 px-2 py-px font-extrabold uppercase tracking-[0.12em] text-[#041018] shadow-lg shadow-sky-500/30",
-            large ? "text-[9px]" : "text-[8px]",
-          ].join(" ")}
-        >
-          Up next
+        <div className="mb-0.5 flex justify-center">
+          <span className="rounded-full bg-sky-500 px-2 py-px text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#041018] shadow-md shadow-sky-500/30">
+            Up next
+          </span>
         </div>
       )}
-      <div
-        className={[
-          "flex h-full min-h-0 flex-col justify-center",
-          large ? "gap-0.5" : "gap-1",
-        ].join(" ")}
-      >
+      <div className="flex min-h-0 flex-1 flex-col justify-center gap-0">
         <TeamRow
           team={a}
           isWinner={decided && winnerId === a?.id}
@@ -1031,19 +1004,13 @@ function MatchCard({
           locked={!ready}
           score={showScores ? scoreA : null}
           showScoreSlot={showScores}
-          large={large}
         />
         {showTime && (
-          <div
-            className={[
-              "flex items-center justify-center font-semibold tabular-nums text-slate-400",
-              large ? "py-1 text-sm" : "py-0.5 text-[11px]",
-            ].join(" ")}
-          >
+          <div className="flex items-center justify-center py-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
             {formatMatchTime(live.kickoff)}
           </div>
         )}
-        {showLive && <LiveIndicator large={large} />}
+        {showLive && <LiveIndicator />}
         <TeamRow
           team={b}
           isWinner={decided && winnerId === b?.id}
@@ -1055,14 +1022,13 @@ function MatchCard({
           locked={!ready}
           score={showScores ? scoreB : null}
           showScoreSlot={showScores}
-          large={large}
         />
       </div>
     </motion.div>
   );
 }
 
-// One vertical column of matches. `expand` = full viewport height (R32 sides).
+// One vertical column of matches on the shared 8-row bracket grid.
 function RoundColumn({
   label,
   roundIdx,
@@ -1075,18 +1041,12 @@ function RoundColumn({
   align,
   showLabel = true,
   liveByKey,
-  expand = false,
   liveKey,
   nextKey,
   onFlagClick,
 }) {
   return (
-    <div
-      className={[
-        "flex h-full flex-col self-stretch",
-        expand ? "w-[min(26vw,320px)] shrink-0" : "h-full shrink-0 self-stretch",
-      ].join(" ")}
-    >
+    <div className="flex h-full w-[var(--match-card-w)] shrink-0 flex-col self-stretch">
       {showLabel && (
         <div
           className={[
@@ -1098,31 +1058,35 @@ function RoundColumn({
         </div>
       )}
       <div
-        className={[
-          "flex min-h-0 flex-1 flex-col",
-          expand ? "h-full gap-3 overflow-hidden" : "justify-around gap-3",
-        ].join(" ")}
+        className="grid h-full min-h-0 flex-1"
+        style={{ gridTemplateRows: `repeat(${BRACKET_ROWS}, minmax(0, 1fr))` }}
       >
-        {indices.map((m) => {
+        {indices.map((m, idx) => {
           const rk = key(ROUNDS[roundIdx].key, m);
           const highlight = rk === liveKey ? "live" : rk === nextKey ? "next" : null;
+          const rowsPerMatch = BRACKET_ROWS / indices.length;
+          const rowStart = idx * rowsPerMatch + 1;
+          const rowEnd = rowStart + rowsPerMatch;
           return (
-            <MatchCard
+            <div
               key={m}
-              roundIdx={roundIdx}
-              matchIdx={m}
-              teams={getMatchTeams(roundIdx, m, winners, teams)}
-              winnerId={winners[rk]}
-              onPick={onPick}
-              reveal={reveal}
-              actualId={actual[rk]}
-              align={align}
-              live={liveByKey?.[rk]}
-              fluid={expand}
-              large={expand}
-              highlight={highlight}
-              onFlagClick={onFlagClick}
-            />
+              className="flex min-h-0 items-center justify-center overflow-hidden"
+              style={{ gridRow: `${rowStart} / ${rowEnd}` }}
+            >
+              <MatchCard
+                roundIdx={roundIdx}
+                matchIdx={m}
+                teams={getMatchTeams(roundIdx, m, winners, teams)}
+                winnerId={winners[rk]}
+                onPick={onPick}
+                reveal={reveal}
+                actualId={actual[rk]}
+                align={align}
+                live={liveByKey?.[rk]}
+                highlight={highlight}
+                onFlagClick={onFlagClick}
+              />
+            </div>
           );
         })}
       </div>
@@ -1310,7 +1274,10 @@ function TrophyMark({ champion }) {
 // Center column: trophy → Final label → match card, all dead-center in the bracket.
 function CenterSpine({ winners, teams, onPick, reveal, actual, champion, liveByKey, liveKey, nextKey, onFlagClick }) {
   return (
-    <div className="relative flex h-full shrink-0 items-center justify-center self-stretch" style={{ width: 248 }}>
+    <div
+      className="relative flex h-full shrink-0 items-center justify-center self-stretch"
+      style={{ width: "calc(var(--match-card-w) + 2.5rem)" }}
+    >
       <motion.div
         className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
         initial={{ opacity: 0, y: 12 }}
@@ -1429,7 +1396,7 @@ function Stat({ label, value, accent }) {
 }
 
 // ----------------------------------------------------------------------------
-// FIT-TO-WIDTH — scales inner bracket horizontally; height stays full viewport.
+// FIT-TO-WIDTH — scales the whole bracket uniformly when the viewport is narrow.
 // ----------------------------------------------------------------------------
 function FitToWidth({ children }) {
   const outerRef = useRef(null);
@@ -1441,7 +1408,9 @@ function FitToWidth({ children }) {
       const outer = outerRef.current;
       const inner = innerRef.current;
       if (!outer || !inner) return;
-      setScale(Math.min(1, outer.clientWidth / inner.scrollWidth));
+      const widthScale = outer.clientWidth / inner.scrollWidth;
+      const heightScale = outer.clientHeight / inner.scrollHeight;
+      setScale(Math.min(1, widthScale, heightScale));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1458,11 +1427,11 @@ function FitToWidth({ children }) {
     <div ref={outerRef} className="relative h-full w-full">
       <div
         ref={innerRef}
-        className="absolute left-1/2 top-0 flex h-full items-stretch"
+        className="absolute left-1/2 top-1/2 flex h-full items-stretch"
         style={{
           width: "max-content",
-          transform: `translateX(-50%) scale(${scale})`,
-          transformOrigin: "top center",
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          transformOrigin: "center center",
         }}
       >
         {children}
@@ -1815,32 +1784,34 @@ export default function App() {
         </div>
 
         {/* DESKTOP — R32 full-height sides; inner rounds scale to fit width */}
-        <div className="hidden h-[calc(100dvh-6.5rem)] min-h-[720px] lg:flex lg:items-stretch lg:gap-2">
-          <RoundColumn roundIdx={0} indices={sideIdx(0, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} expand />
-          <Connector count={8} side="left" active={activeFor(0, "left")} />
-
-          <div className="flex h-full min-w-0 flex-1">
-            <FitToWidth>
-              <div className="flex h-full items-stretch gap-1">
-                <RoundColumn roundIdx={1} indices={sideIdx(1, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <Connector count={4} side="left" active={activeFor(1, "left")} />
-                <RoundColumn roundIdx={2} indices={sideIdx(2, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <Connector count={2} side="left" active={activeFor(2, "left")} />
-                <RoundColumn roundIdx={3} indices={sideIdx(3, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <SFFinalConnector side="left" active={sfLeftDecided} />
-                <CenterSpine winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} champion={champion} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <SFFinalConnector side="right" active={sfRightDecided} />
-                <RoundColumn roundIdx={3} indices={sideIdx(3, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <Connector count={2} side="right" active={activeFor(2, "right")} />
-                <RoundColumn roundIdx={2} indices={sideIdx(2, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-                <Connector count={4} side="right" active={activeFor(1, "right")} />
-                <RoundColumn roundIdx={1} indices={sideIdx(1, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              </div>
-            </FitToWidth>
-          </div>
-
-          <Connector count={8} side="right" active={activeFor(0, "right")} />
-          <RoundColumn roundIdx={0} indices={sideIdx(0, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} expand />
+        <div
+          className="hidden h-[calc(100dvh-6.5rem)] min-h-[720px] lg:block"
+          style={{
+            "--match-card-h": `calc((100dvh - 6.5rem) / ${BRACKET_ROWS} * ${MATCH_CARD_ROW_FRAC})`,
+            "--match-card-w": `calc(var(--match-card-h) * ${MATCH_CARD_ASPECT})`,
+          }}
+        >
+          <FitToWidth>
+            <div className="flex h-full items-stretch gap-2">
+              <RoundColumn roundIdx={0} indices={sideIdx(0, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={8} side="left" active={activeFor(0, "left")} />
+              <RoundColumn roundIdx={1} indices={sideIdx(1, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={4} side="left" active={activeFor(1, "left")} />
+              <RoundColumn roundIdx={2} indices={sideIdx(2, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={2} side="left" active={activeFor(2, "left")} />
+              <RoundColumn roundIdx={3} indices={sideIdx(3, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <SFFinalConnector side="left" active={sfLeftDecided} />
+              <CenterSpine winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} champion={champion} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <SFFinalConnector side="right" active={sfRightDecided} />
+              <RoundColumn roundIdx={3} indices={sideIdx(3, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={2} side="right" active={activeFor(2, "right")} />
+              <RoundColumn roundIdx={2} indices={sideIdx(2, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={4} side="right" active={activeFor(1, "right")} />
+              <RoundColumn roundIdx={1} indices={sideIdx(1, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+              <Connector count={8} side="right" active={activeFor(0, "right")} />
+              <RoundColumn roundIdx={0} indices={sideIdx(0, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+            </div>
+          </FitToWidth>
         </div>
       </main>
 
