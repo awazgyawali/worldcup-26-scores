@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePredictions } from "./hooks/usePredictions";
 
 /* ============================================================================
  *  FIFA WORLD CUP 2026 — KNOCKOUT BRACKET PREDICTOR
@@ -438,6 +439,30 @@ const buildActual = (slotMatches) => {
   return actual;
 };
 
+/** Grade a winners map against decided results. */
+function gradeWinners(winners, actual) {
+  const byRound = {};
+  let correct = 0,
+    total = 0,
+    points = 0;
+  for (const r of [...ROUNDS, THIRD_PLACE]) {
+    byRound[r.key] = { correct: 0, total: 0 };
+    const count = r.matches ?? 1;
+    for (let m = 0; m < count; m++) {
+      const k = key(r.key, m);
+      if (!actual[k] || !winners[k]) continue;
+      byRound[r.key].total++;
+      total++;
+      if (actual[k] === winners[k]) {
+        byRound[r.key].correct++;
+        correct++;
+        points += r.points;
+      }
+    }
+  }
+  return { correct, total, points, byRound };
+}
+
 // ----------------------------------------------------------------------------
 // SMALL HOOKS
 // ----------------------------------------------------------------------------
@@ -544,9 +569,9 @@ function SFFinalConnector({ active }) {
 // ----------------------------------------------------------------------------
 // TEAM ROW — [flag] CODE [verdict] [score]
 // ----------------------------------------------------------------------------
-function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, score, isMatchWinner, align = "left" }) {
+function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, score, isMatchWinner, align = "left" }) {
   const empty = !team;
-  const disabled = empty || locked;
+  const disabled = empty || locked || readOnly;
   const right = align === "right";
 
   let strip = "team-strip";
@@ -573,12 +598,14 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
       tabIndex={disabled ? -1 : 0}
       onClick={() => !disabled && onPick(team)}
       onKeyDown={(e) => !disabled && e.key === "Enter" && onPick(team)}
-      title={empty ? undefined : locked ? "Both teams must be decided first" : `Advance ${team.name}`}
+      title={
+        empty ? undefined : readOnly ? "Shared bracket — view only" : locked ? "Both teams must be decided first" : `Advance ${team.name}`
+      }
       className={[
         "group/row relative flex h-[22px] w-full items-center gap-1.5 rounded-sm px-1.5 transition-all duration-200",
         right ? "flex-row-reverse text-right" : "text-left",
         strip,
-        empty ? "cursor-default" : locked ? "cursor-not-allowed opacity-55" : "cursor-pointer",
+        empty ? "cursor-default" : locked || readOnly ? "cursor-not-allowed opacity-55" : "cursor-pointer",
       ].join(" ")}
     >
       {empty ? (
@@ -637,7 +664,7 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
 // ----------------------------------------------------------------------------
 // MATCH CARD (bracket)
 // ----------------------------------------------------------------------------
-function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left" }) {
+function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false }) {
   const ready = !!a && !!b;
   const decided = !!winnerId;
 
@@ -703,6 +730,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         onPick={(t) => onPick(roundIdx, matchIdx, t)}
         onFlagClick={onFlagClick}
         locked={!ready}
+        readOnly={readOnly}
         score={scoreA}
         isMatchWinner={actualWinnerIsA}
         align={align}
@@ -730,6 +758,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         onPick={(t) => onPick(roundIdx, matchIdx, t)}
         onFlagClick={onFlagClick}
         locked={!ready}
+        readOnly={readOnly}
         score={scoreB}
         isMatchWinner={actualWinnerIsB}
         align={align}
@@ -843,7 +872,7 @@ function ChampionBox({ champion, isActual }) {
   );
 }
 
-function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey }) {
+function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, readOnly = false }) {
   const rk = "third-0";
   const match = slotMatches[rk];
   // Real fixture teams beat the predicted ones once semis are actually played.
@@ -868,13 +897,14 @@ function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagCli
         highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
         onFlagClick={onFlagClick}
         onOpenMatch={onOpenMatch}
+        readOnly={readOnly}
       />
     </div>
   );
 }
 
 /** Last bracket column: trophy → final → champion → third place. */
-function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch }) {
+function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false }) {
   const rk = key("final", 0);
   return (
     <div className="flex h-full w-[calc(var(--match-card-w)+1.5rem)] shrink-0 flex-col items-center justify-center gap-2.5 self-stretch px-3">
@@ -895,6 +925,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
           onFlagClick={onFlagClick}
           onOpenMatch={onOpenMatch}
+          readOnly={readOnly}
         />
       </div>
       <ChampionBox champion={actualChampion || champion} isActual={!!actualChampion} />
@@ -909,6 +940,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           onOpenMatch={onOpenMatch}
           liveKey={liveKey}
           nextKey={nextKey}
+          readOnly={readOnly}
         />
       </div>
     </div>
@@ -1405,6 +1437,111 @@ function GamesRail({ matches, liveNums, nextNum, onOpenMatch }) {
 }
 
 // ----------------------------------------------------------------------------
+// HEADER ICONS + TOOLBAR
+// ----------------------------------------------------------------------------
+function IconUsers({ className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function IconLock({ className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+function IconReset({ className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </svg>
+  );
+}
+
+function IconUser({ className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function HeaderToolbar({
+  viewingFriend,
+  locked,
+  onExitFriendView,
+  onOpenFriends,
+  onOpenLock,
+  onReset,
+}) {
+  return (
+    <div className="header-toolbar">
+      {viewingFriend ? (
+        <button
+          type="button"
+          onClick={onExitFriendView}
+          className="header-action header-action--primary"
+          title="Return to your bracket"
+        >
+          <IconUser />
+          <span className="hidden sm:inline">My picks</span>
+        </button>
+      ) : (
+        <>
+          {locked ? (
+            <span className="header-locked" title="Your picks are locked">
+              <IconLock />
+              <span className="hidden sm:inline">Locked</span>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenLock}
+              className="header-action header-action--lock w-8 px-0 sm:w-auto sm:px-3"
+              title="Lock your picks permanently"
+            >
+              <IconLock />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenFriends}
+            className="header-action header-action--friends w-8 px-0 sm:w-auto sm:px-3"
+            title="View friends' predictions"
+          >
+            <IconUsers />
+            <span className="hidden sm:inline">Friends</span>
+          </button>
+          {!locked && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="header-action header-action--reset w-8 px-0 sm:w-auto sm:px-3"
+              title="Clear all predictions"
+            >
+              <IconReset />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // SCORE HUD — prediction points, always visible in the header.
 // ----------------------------------------------------------------------------
 function ScoreHUD({ stats }) {
@@ -1504,7 +1641,7 @@ function LoadingScreen() {
 // ----------------------------------------------------------------------------
 // SCROLLABLE BRACKET — left→right, all rounds, horizontal scroll.
 // ----------------------------------------------------------------------------
-function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef }) {
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false }) {
   const round = ROUNDS[roundIdx];
   const rowsPerMatch = BRACKET_ROWS / indices.length;
   return (
@@ -1531,6 +1668,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
                 onFlagClick={onFlagClick}
                 onOpenMatch={onOpenMatch}
+                readOnly={readOnly}
               />
             </div>
           );
@@ -1540,7 +1678,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
   );
 }
 
-function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, stats, liveRoundKey }) {
+function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, stats, liveRoundKey, readOnly = false }) {
   const scrollRef = useRef(null);
   const colRefs = useRef({}); // roundKey → [leftCol, rightCol?]
   const [activeRound, setActiveRound] = useState("r32");
@@ -1621,7 +1759,7 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
     return Array.from({ length: half }, (_, i) => base + i);
   };
 
-  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch };
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly };
 
   return (
     <>
@@ -1659,17 +1797,209 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
 }
 
 // ----------------------------------------------------------------------------
+// NAME + FRIENDS MODALS
+// ----------------------------------------------------------------------------
+function NameModal({ onSubmit }) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Please enter your name");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const ok = await onSubmit(trimmed);
+      if (!ok) setError("Something went wrong — try again");
+    } catch {
+      setError("Could not connect — check your network and try again");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={() => {}} maxW="max-w-md">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="font-display text-2xl tracking-wider text-[var(--text-primary)]">Welcome to WC26</h2>
+          <p className="mt-1.5 text-sm text-[var(--text-muted)]">Enter your name to save picks and see friends&apos; predictions.</p>
+        </div>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+          maxLength={40}
+          autoFocus
+          className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--pitch-glow)]/50"
+        />
+        {error && <p className="text-xs font-semibold text-[var(--live)]">{error}</p>}
+        <button
+          type="submit"
+          disabled={submitting || !name.trim()}
+          className="rounded-xl bg-[var(--pitch)] px-4 py-3 text-sm font-bold tracking-tight text-white transition-opacity disabled:opacity-50"
+        >
+          {submitting ? "Saving…" : "Start picking"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function FriendsModal({ open, onClose, friends, currentUid, onSelect }) {
+  return (
+    <Modal open={open} onClose={onClose} maxW="max-w-md">
+      <div className="flex flex-col">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+          <div>
+            <h2 className="font-display text-xl tracking-wider">Friends Predictions</h2>
+            <p className="mt-0.5 text-[10px] font-semibold text-[var(--text-muted)]">Ranked by correct picks</p>
+          </div>
+          <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 place-items-center rounded-lg text-sm" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-3">
+          {friends.length === 0 ? (
+            <p className="px-2 py-8 text-center text-sm text-[var(--text-muted)]">No predictions yet — be the first!</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {friends.map((friend, idx) => {
+                const isMe = friend.uid === currentUid;
+                const hasGraded = friend.total > 0;
+                return (
+                  <li key={friend.uid}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(friend)}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+                    >
+                      <span
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-black tabular-nums ${
+                          idx === 0
+                            ? "bg-[var(--gold)]/20 text-[var(--gold-bright)]"
+                            : idx === 1
+                              ? "bg-white/8 text-[var(--text-secondary)]"
+                              : idx === 2
+                                ? "bg-white/5 text-[var(--text-muted)]"
+                                : "text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text-primary)]">
+                          <span className="truncate">{friend.name}</span>
+                          {friend.locked && (
+                            <span className="shrink-0 text-[10px]" title="Locked">
+                              🔒
+                            </span>
+                          )}
+                          {isMe && (
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--pitch-glow)]">You</span>
+                          )}
+                        </span>
+                        <span className="text-[10px] font-medium text-[var(--text-muted)]">
+                          {hasGraded ? `${friend.correct}/${friend.total} correct` : "No graded picks yet"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{friend.points}</span>
+                        <span className="block text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">pts</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function LockConfirmModal({ open, onClose, onConfirm, locking }) {
+  return (
+    <Modal open={open} onClose={onClose} maxW="max-w-md">
+      <div className="flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="font-display text-2xl tracking-wider text-[var(--text-primary)]">Lock your picks?</h2>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+            Once locked, you cannot change your bracket. Only an admin can unlock it from the database. This prevents editing after results are known.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={locking}
+            className="btn-ghost flex-1 rounded-xl px-4 py-3 text-sm font-bold tracking-tight disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={locking}
+            className="flex-1 rounded-xl bg-[var(--gold)] px-4 py-3 text-sm font-bold tracking-tight text-[var(--bg-deep)] transition-opacity disabled:opacity-50"
+          >
+            {locking ? "Locking…" : "Lock picks"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // MAIN APP
 // ----------------------------------------------------------------------------
 export default function App() {
   const [winners, setWinners] = useState(loadStoredWinners);
+  const [showFriends, setShowFriends] = useState(false);
+  const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const [teamModal, setTeamModal] = useState(null);
   const [matchModal, setMatchModal] = useState(null);
   const prevChampRef = useRef(null);
   const { matches, byNum, r32Teams, journeys, loading, lastUpdated, error } = useWorldCup();
 
+  const onRemoteWinners = useCallback((remote, { force } = {}) => {
+    setWinners((local) => {
+      if (force) return remote;
+      if (Object.keys(local).length > 0) return local;
+      return remote;
+    });
+  }, []);
+
+  const {
+    uid,
+    name,
+    needsName,
+    authReady,
+    submitName,
+    locked,
+    locking,
+    lockPredictions,
+    friends,
+    viewingFriend,
+    viewFriend,
+    exitFriendView,
+    readOnly,
+  } = usePredictions(winners, { onRemoteWinners });
+
   const teams = r32Teams ?? [];
+  const displayWinners = useMemo(() => {
+    const w = viewingFriend?.winners ?? winners;
+    return teams.length === 32 ? normalize(w, teams) : w;
+  }, [viewingFriend, winners, teams]);
   const slotMatches = useMemo(() => buildSlotMatches(byNum), [byNum]);
   const actual = useMemo(() => buildActual(slotMatches), [slotMatches]);
 
@@ -1698,22 +2028,27 @@ export default function App() {
 
   // Re-validate stored picks once bracket seeds load.
   useEffect(() => {
-    if (teams.length === 32) setWinners((w) => normalize(w, teams));
-  }, [teams.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (teams.length === 32 && !locked) setWinners((w) => normalize(w, teams));
+  }, [teams.length, locked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (readOnly) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(winners));
     } catch {
       /* ignore quota errors */
     }
-  }, [winners]);
+  }, [winners, readOnly]);
 
-  const champion = teams.find((t) => t.id === winners[key("final", 0)]) || null;
+  const champion = teams.find((t) => t.id === displayWinners[key("final", 0)]) || null;
   const actualChampion = slotMatches[key("final", 0)]?.winner || null;
 
   useEffect(() => {
     const id = champion?.id || null;
+    if (readOnly) {
+      prevChampRef.current = id;
+      return;
+    }
     if (id && id !== prevChampRef.current) {
       setConfetti(true);
       const t = setTimeout(() => setConfetti(false), 4200);
@@ -1721,10 +2056,11 @@ export default function App() {
       return () => clearTimeout(t);
     }
     if (!id) prevChampRef.current = null;
-  }, [champion]);
+  }, [champion, readOnly]);
 
   const onPick = useCallback(
     (roundIdx, matchIdx, team) => {
+      if (readOnly) return;
       const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
       setWinners((prev) => {
         const next = { ...prev };
@@ -1733,10 +2069,23 @@ export default function App() {
         return normalize(next, teams);
       });
     },
-    [teams]
+    [teams, readOnly]
+  );
+
+  const handleSelectFriend = useCallback(
+    (friend) => {
+      if (friend.uid === uid) {
+        exitFriendView();
+      } else {
+        viewFriend(friend);
+      }
+      setShowFriends(false);
+    },
+    [viewFriend, exitFriendView, uid]
   );
 
   const resetBracket = useCallback(() => {
+    if (locked) return;
     setWinners({});
     prevChampRef.current = null;
     try {
@@ -1744,7 +2093,12 @@ export default function App() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [locked]);
+
+  const handleLock = useCallback(async () => {
+    const ok = await lockPredictions();
+    if (ok) setShowLockConfirm(false);
+  }, [lockPredictions]);
 
   const onFlagClick = useCallback((team) => setTeamModal(team), []);
   const openMatchBySlot = useCallback(
@@ -1760,35 +2114,56 @@ export default function App() {
   }, []);
 
   // Grade picks against real results as they land.
-  const stats = useMemo(() => {
-    const byRound = {};
-    let correct = 0,
-      total = 0,
-      points = 0;
-    for (const r of [...ROUNDS, THIRD_PLACE]) {
-      byRound[r.key] = { correct: 0, total: 0 };
-      const count = r.matches ?? 1;
-      for (let m = 0; m < count; m++) {
-        const k = key(r.key, m);
-        if (!actual[k] || !winners[k]) continue;
-        byRound[r.key].total++;
-        total++;
-        if (actual[k] === winners[k]) {
-          byRound[r.key].correct++;
-          correct++;
-          points += r.points;
-        }
-      }
-    }
-    return { correct, total, points, byRound };
-  }, [winners, actual]);
+  const stats = useMemo(() => gradeWinners(displayWinners, actual), [displayWinners, actual]);
 
-  const bracketProps = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch: openMatchBySlot };
+  const rankedFriends = useMemo(
+    () =>
+      friends
+        .map((friend) => ({
+          ...friend,
+          ...gradeWinners(friend.winners, actual),
+        }))
+        .sort(
+          (a, b) =>
+            b.correct - a.correct ||
+            b.points - a.points ||
+            b.total - a.total ||
+            a.name.localeCompare(b.name)
+        ),
+    [friends, actual]
+  );
+
+  const bracketProps = {
+    winners: displayWinners,
+    teams,
+    onPick,
+    actual,
+    slotMatches,
+    liveKey,
+    nextKey,
+    onFlagClick,
+    onOpenMatch: openMatchBySlot,
+    readOnly,
+  };
   const showBracket = teams.length === 32;
 
   return (
     <div className="app-shell text-[var(--text-primary)]">
       <Confetti fire={confetti} />
+      {authReady && needsName && <NameModal onSubmit={submitName} />}
+      <FriendsModal
+        open={showFriends}
+        onClose={() => setShowFriends(false)}
+        friends={rankedFriends}
+        currentUid={uid}
+        onSelect={handleSelectFriend}
+      />
+      <LockConfirmModal
+        open={showLockConfirm}
+        onClose={() => setShowLockConfirm(false)}
+        onConfirm={handleLock}
+        locking={locking}
+      />
       <TeamModal
         team={teamModal}
         journey={teamModal ? journeys.get(teamModal.code) ?? [] : []}
@@ -1824,18 +2199,38 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="header-controls">
             <ScoreHUD stats={stats} />
-            <button
-              onClick={resetBracket}
-              className="btn-ghost rounded-full px-3 py-1.5 text-[11px] font-bold tracking-tight"
-              title="Clear all predictions"
-            >
-              Reset
-            </button>
+            <HeaderToolbar
+              viewingFriend={viewingFriend}
+              locked={locked}
+              onExitFriendView={exitFriendView}
+              onOpenFriends={() => setShowFriends(true)}
+              onOpenLock={() => setShowLockConfirm(true)}
+              onReset={resetBracket}
+            />
           </div>
         </div>
       </header>
+
+      {viewingFriend && (
+        <div className="border-b border-[var(--pitch-glow)]/20 bg-[color-mix(in_oklch,var(--pitch)_18%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--pitch-glow)]">
+          Viewing as: {viewingFriend.name}
+          {stats.total > 0 && (
+            <span className="text-[var(--gold-bright)]">
+              {" "}
+              · {stats.points} pts · {stats.correct}/{stats.total} correct
+            </span>
+          )}
+          {" "}— picks are read-only
+        </div>
+      )}
+
+      {!viewingFriend && locked && (
+        <div className="border-b border-[var(--gold)]/25 bg-[color-mix(in_oklch,var(--gold)_12%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--gold-bright)]">
+          Your picks are locked — contact an admin to unlock
+        </div>
+      )}
 
       {/* GAMES RAIL — linear, chronological */}
       {knockouts.length > 0 && (
@@ -1871,8 +2266,16 @@ export default function App() {
       </main>
 
       <footer className="px-4 pb-6 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
-        Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
-        Picks auto-save & auto-grade against live results (refreshes every minute).
+        {viewingFriend ? (
+          <>Viewing {viewingFriend.name}&apos;s bracket — tap flags or match details to explore. Use &ldquo;My picks&rdquo; to return to yours.</>
+        ) : locked ? (
+          <>Your bracket is locked — picks cannot be changed until an admin unlocks your entry in the database.</>
+        ) : (
+          <>
+            Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
+            Picks auto-save to the cloud{name ? ` as ${name}` : ""} & auto-grade against live results (refreshes every minute).
+          </>
+        )}
       </footer>
     </div>
   );
