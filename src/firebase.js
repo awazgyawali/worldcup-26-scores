@@ -17,7 +17,6 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-export const NAME_KEY = "wc26-user-name";
 export const PREDICTIONS_COLLECTION = "predictions";
 
 /**

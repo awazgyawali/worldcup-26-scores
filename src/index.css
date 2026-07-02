@@ -1114,57 +1114,42 @@ body {
 }
 
 .journey-item--win {
-  border-color: color-mix(in oklch, var(--pitch-glow) 30%, transparent);
-  border-left-color: var(--pitch-glow);
-  background: color-mix(in oklch, var(--pitch-glow) 9%, var(--bg-surface));
+  border-left-color: color-mix(in oklch, var(--pitch-glow) 38%, var(--border));
 }
 
 .journey-item--loss {
-  border-color: color-mix(in oklch, var(--wrong) 28%, transparent);
-  border-left-color: var(--wrong);
-  background: color-mix(in oklch, var(--wrong) 8%, var(--bg-surface));
+  border-left-color: color-mix(in oklch, var(--wrong) 38%, var(--border));
 }
 
 .journey-item--draw {
-  border-color: color-mix(in oklch, var(--text-muted) 32%, transparent);
-  border-left-color: color-mix(in oklch, var(--text-muted) 70%, transparent);
-  background: color-mix(in oklch, var(--text-muted) 11%, var(--bg-surface));
+  border-left-color: var(--border-strong);
 }
 
 .journey-item--live {
-  border-left-color: var(--live);
-  background: color-mix(in oklch, var(--live) 7%, var(--bg-surface));
+  border-left-color: color-mix(in oklch, var(--live) 42%, var(--border));
 }
 
 .journey-item--upcoming {
-  border-left-color: var(--next);
+  border-left-color: color-mix(in oklch, var(--next) 38%, var(--border));
 }
 
 .journey-item:hover {
-  filter: brightness(1.06);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
 }
 
 .journey-item--selected {
-  border-color: color-mix(in oklch, var(--gold) 50%, transparent);
-  background: color-mix(in oklch, var(--gold) 10%, var(--bg-surface));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklch, var(--gold) 22%, transparent),
-    0 0 0 1px color-mix(in oklch, var(--gold) 15%, transparent);
+  border-color: color-mix(in oklch, var(--gold) 42%, transparent);
+  background: color-mix(in oklch, var(--gold) 8%, var(--bg-surface));
+  box-shadow: inset 2px 0 0 var(--gold-bright);
 }
 
-.journey-item--selected.journey-item--win {
-  border-left-color: var(--pitch-glow);
-  background: color-mix(in oklch, var(--pitch-glow) 12%, color-mix(in oklch, var(--gold) 8%, var(--bg-surface)));
-}
-
-.journey-item--selected.journey-item--loss {
-  border-left-color: var(--wrong);
-  background: color-mix(in oklch, var(--wrong) 10%, color-mix(in oklch, var(--gold) 8%, var(--bg-surface)));
-}
-
-.journey-item--selected.journey-item--draw {
-  border-left-color: color-mix(in oklch, var(--text-muted) 70%, transparent);
-  background: color-mix(in oklch, var(--text-muted) 12%, color-mix(in oklch, var(--gold) 8%, var(--bg-surface)));
+.journey-item--selected.journey-item--win,
+.journey-item--selected.journey-item--loss,
+.journey-item--selected.journey-item--draw,
+.journey-item--selected.journey-item--live,
+.journey-item--selected.journey-item--upcoming {
+  background: color-mix(in oklch, var(--gold) 8%, var(--bg-surface));
 }
 
 .journey-item__top {
@@ -1228,14 +1213,6 @@ body {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
-}
-
-.journey-item--win .journey-item__score {
-  color: var(--pitch-glow);
-}
-
-.journey-item--loss .journey-item__score {
-  color: var(--wrong);
 }
 
 .journey-item--draw .journey-item__score {
@@ -1415,8 +1392,32 @@ body {
 }
 
 .journey-result-pill--sm {
-  padding: 0.12rem 0.4rem;
+  padding: 0;
   font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: none;
+}
+
+.journey-master .journey-result-pill--win {
+  color: color-mix(in oklch, var(--pitch-glow) 55%, var(--text-muted));
+}
+
+.journey-master .journey-result-pill--loss {
+  color: color-mix(in oklch, var(--wrong) 55%, var(--text-muted));
+}
+
+.journey-master .journey-result-pill--draw,
+.journey-master .journey-result-pill--tbd {
+  color: var(--text-muted);
+}
+
+.journey-master .journey-result-pill--live {
+  color: color-mix(in oklch, var(--live) 60%, var(--text-muted));
+}
+
+.journey-master .journey-result-pill--upcoming {
+  color: color-mix(in oklch, var(--next) 55%, var(--text-muted));
 }
 
 .journey-result-pill--win {

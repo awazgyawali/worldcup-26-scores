@@ -1,30 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { auth, db, NAME_KEY, PREDICTIONS_COLLECTION } from "../firebase";
+import { auth, db, PREDICTIONS_COLLECTION } from "../firebase";
 
 const SAVE_DEBOUNCE_MS = 800;
 
-function readStoredName() {
-  try {
-    return localStorage.getItem(NAME_KEY)?.trim() || "";
-  } catch {
-    return "";
-  }
-}
-
-function writeStoredName(name) {
-  try {
-    localStorage.setItem(NAME_KEY, name);
-  } catch {
-    /* ignore quota errors */
-  }
-}
-
 function mapPredictionDoc(id, data) {
+  const trimmedName = data.name?.trim() || "";
   return {
     uid: id,
-    name: data.name || "Anonymous",
+    name: trimmedName,
     winners: data.winners || {},
     locked: !!data.locked,
     updatedAt: data.updatedAt?.toMillis?.() ?? 0,
@@ -33,8 +18,9 @@ function mapPredictionDoc(id, data) {
 
 export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}) {
   const [uid, setUid] = useState(null);
-  const [name, setName] = useState(readStoredName);
-  const [needsName, setNeedsName] = useState(() => !readStoredName());
+  const [name, setName] = useState("");
+  const [needsName, setNeedsName] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [locked, setLocked] = useState(false);
   const [locking, setLocking] = useState(false);
@@ -76,10 +62,20 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         setFriends(list);
 
         const self = uidRef.current ? list.find((f) => f.uid === uidRef.current) : null;
+
+        if (!uidRef.current) return;
+
+        setProfileLoaded(true);
+
         if (!self) {
-          if (uidRef.current) loadedRemoteRef.current = true;
+          loadedRemoteRef.current = true;
+          setName("");
+          setNeedsName(true);
           return;
         }
+
+        setName(self.name);
+        setNeedsName(false);
 
         const isLocked = self.locked;
         if (isLocked) {
@@ -88,11 +84,6 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         } else if (!lockingRef.current) {
           lockedRef.current = false;
           setLocked(false);
-        }
-
-        if (self.name && self.name !== name) {
-          setName(self.name);
-          writeStoredName(self.name);
         }
 
         const remoteWinners = self.winners;
@@ -132,7 +123,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     );
 
     return unsub;
-  }, [enabled, name]);
+  }, [enabled]);
 
   // Ensure a profile doc exists as soon as we have auth + name (not only after pick changes).
   useEffect(() => {
@@ -199,13 +190,15 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     if (!trimmed) return false;
 
     try {
-      writeStoredName(trimmed);
+      let userId = uidRef.current;
+      if (!userId) {
+        const credential = await signInAnonymously(auth);
+        userId = credential.user.uid;
+        setUid(userId);
+      }
+
       setName(trimmed);
       setNeedsName(false);
-
-      const credential = await signInAnonymously(auth);
-      const userId = credential.user.uid;
-      setUid(userId);
       loadedRemoteRef.current = true;
 
       const payload = winnersRef.current;
@@ -230,12 +223,6 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
   useEffect(() => {
     if (!enabled) {
-      setAuthReady(true);
-      return;
-    }
-
-    const storedName = readStoredName();
-    if (!storedName) {
       setAuthReady(true);
       return;
     }
@@ -304,10 +291,15 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     }
   }, [uid, locked, name]);
 
+  useEffect(() => {
+    setProfileLoaded(false);
+  }, [uid]);
+
   return {
     uid,
     name,
     needsName,
+    profileLoaded,
     authReady,
     submitName,
     locked,

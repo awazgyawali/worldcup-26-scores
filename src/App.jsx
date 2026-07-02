@@ -2313,6 +2313,7 @@ export default function App() {
     uid,
     name,
     needsName,
+    profileLoaded,
     authReady,
     submitName,
     locked,
@@ -2498,7 +2499,7 @@ export default function App() {
   return (
     <div className="app-shell text-[var(--text-primary)]">
       <Confetti fire={confetti} />
-      {authReady && needsName && <NameModal onSubmit={submitName} />}
+      {authReady && profileLoaded && needsName && <NameModal onSubmit={submitName} />}
       <FriendsModal
         open={showFriends}
         onClose={() => setShowFriends(false)}
@@ -2555,7 +2556,7 @@ export default function App() {
                   name={activeViewerName}
                   isLocked={activeViewerLocked}
                   onClick={() => setShowFriends(true)}
-                  disabled={needsName || !authReady}
+                  disabled={!profileLoaded || needsName || !authReady}
                 />
               </div>
             </div>
