@@ -2106,12 +2106,6 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
         canPick={!isKnockout && canPick && upcoming}
       />
 
-      {match.pens && (
-        <span className="rail-card__pens">
-          pens {match.pens[0]}–{match.pens[1]}
-        </span>
-      )}
-
       {pickTeam && !pickInMatch && (
         <span className="rail-card__pick-hint">
           Pick: {pickTeam.code}

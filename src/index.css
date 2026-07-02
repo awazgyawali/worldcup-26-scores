@@ -758,13 +758,6 @@ body {
   font-weight: 800;
 }
 
-.rail-card__pens {
-  margin-top: 0.05rem;
-  font-size: 0.5rem;
-  font-weight: 700;
-  color: var(--gold-bright);
-}
-
 .rail-card__pick-hint {
   margin-top: 0.05rem;
   font-size: 0.5rem;
