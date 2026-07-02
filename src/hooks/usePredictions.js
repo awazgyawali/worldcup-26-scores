@@ -3,7 +3,7 @@ import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/f
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth, db, PREDICTIONS_COLLECTION } from "../firebase";
 
-const SAVE_DEBOUNCE_MS = 800;
+const SAVE_DEBOUNCE_MS = 3000;
 
 function mapPredictionDoc(id, data) {
   const trimmedName = data.name?.trim() || "";
@@ -16,12 +16,36 @@ function mapPredictionDoc(id, data) {
   };
 }
 
+function formatSyncError(err, context = "save") {
+  const code = err?.code || "";
+  const message = err?.message || String(err);
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
+
+  if (code === "auth/unauthorized-domain" || message.includes("unauthorized-domain")) {
+    return `Firebase Auth blocked this site. Add "${host}" to Firebase Console → Authentication → Settings → Authorized domains.`;
+  }
+  if (code === "permission-denied") {
+    return "Firestore denied the save. Check that you're signed in and rules allow writes to your own predictions doc.";
+  }
+  if (context === "auth") {
+    return `Sign-in failed. Enable Anonymous auth in Firebase and add "${host}" to Authorized domains.`;
+  }
+  return message || "Failed to sync predictions.";
+}
+
+function winnersJson(winners) {
+  return JSON.stringify(winners ?? {});
+}
+
 export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}) {
   const [uid, setUid] = useState(null);
   const [name, setName] = useState("");
   const [needsName, setNeedsName] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const [locked, setLocked] = useState(false);
   const [locking, setLocking] = useState(false);
   const [friends, setFriends] = useState([]);
@@ -32,21 +56,74 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const wasLockedRef = useRef(false);
   const pendingWriteRef = useRef(null);
   const isSavingRef = useRef(false);
+  const lastPersistedJsonRef = useRef(null);
   const lockingRef = useRef(false);
   const lockedRef = useRef(false);
   const winnersRef = useRef(winners);
   const uidRef = useRef(uid);
+  const nameRef = useRef(name);
   const viewingFriendUidRef = useRef(viewingFriendUid);
   const onRemoteWinnersRef = useRef(onRemoteWinners);
 
   winnersRef.current = winners;
   uidRef.current = uid;
+  nameRef.current = name;
   viewingFriendUidRef.current = viewingFriendUid;
   onRemoteWinnersRef.current = onRemoteWinners;
 
   const viewingFriend = viewingFriendUid
     ? friends.find((f) => f.uid === viewingFriendUid) ?? null
     : null;
+
+  const persistWinners = useCallback(async (payload = winnersRef.current, { force = false } = {}) => {
+    if (!enabled) {
+      setSyncError("Cloud sync is disabled.");
+      return false;
+    }
+
+    const userId = uidRef.current;
+    const userName = nameRef.current;
+    if (!userId) {
+      setSyncError(formatSyncError({ code: "auth/unauthorized-domain" }, "auth"));
+      return false;
+    }
+    if (!userName) {
+      setSyncError("Enter your name before saving predictions.");
+      return false;
+    }
+
+    const payloadJson = winnersJson(payload);
+    if (!force && payloadJson === lastPersistedJsonRef.current) {
+      return true;
+    }
+
+    setSyncing(true);
+    try {
+      pendingWriteRef.current = payloadJson;
+      isSavingRef.current = true;
+      await setDoc(
+        doc(db, PREDICTIONS_COLLECTION, userId),
+        {
+          uid: userId,
+          name: userName,
+          winners: payload,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      lastPersistedJsonRef.current = payloadJson;
+      setSyncError(null);
+      return true;
+    } catch (err) {
+      pendingWriteRef.current = null;
+      isSavingRef.current = false;
+      console.error("[WC26] Failed to save predictions:", err);
+      setSyncError(formatSyncError(err));
+      return false;
+    } finally {
+      setSyncing(false);
+    }
+  }, [enabled]);
 
   // Always-on realtime listener for every prediction doc.
   useEffect(() => {
@@ -88,12 +165,13 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
         const remoteWinners = self.winners;
         const hasRemote = Object.keys(remoteWinners).length > 0;
-        const remoteJson = JSON.stringify(remoteWinners);
+        const remoteJson = winnersJson(remoteWinners);
         const isEcho = pendingWriteRef.current === remoteJson;
 
         if (isEcho) {
           pendingWriteRef.current = null;
           isSavingRef.current = false;
+          lastPersistedJsonRef.current = remoteJson;
         }
 
         const shouldSyncSelf =
@@ -105,85 +183,50 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
             lockedRef.current ||
             !loadedRemoteRef.current ||
             (wasLockedRef.current && !isLocked) ||
-            remoteJson !== JSON.stringify(winnersRef.current));
+            remoteJson !== winnersJson(winnersRef.current));
 
         if (shouldSyncSelf) {
+          lastPersistedJsonRef.current = remoteJson;
           const force =
             isLocked ||
             lockedRef.current ||
             (wasLockedRef.current && !isLocked) ||
-            loadedRemoteRef.current;
+            !loadedRemoteRef.current;
           onRemoteWinnersRef.current?.(remoteWinners, { force });
+        } else if (hasRemote && !isEcho) {
+          // Remote is current — treat as persisted even if local state already matches.
+          lastPersistedJsonRef.current = remoteJson;
         }
 
         loadedRemoteRef.current = true;
         wasLockedRef.current = isLocked || lockedRef.current;
       },
-      () => setFriends([])
+      (err) => {
+        console.error("[WC26] Firestore listener error:", err);
+        setSyncError(formatSyncError(err, "listen"));
+        setFriends([]);
+      }
     );
 
     return unsub;
   }, [enabled]);
 
-  // Ensure a profile doc exists as soon as we have auth + name (not only after pick changes).
+  // Debounced save only when local picks actually differ from last persisted snapshot.
   useEffect(() => {
-    if (!enabled || !uid || !name || viewingFriendUid || lockedRef.current) return;
+    if (!enabled || !uid || !name || !loadedRemoteRef.current) return;
 
-    let cancelled = false;
-    (async () => {
-      try {
-        await setDoc(
-          doc(db, PREDICTIONS_COLLECTION, uid),
-          {
-            uid,
-            name,
-            winners: winnersRef.current,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        if (!cancelled) console.error("[WC26] Failed to create/update prediction doc:", err);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, uid, name, viewingFriendUid]);
-
-  // Debounced Firestore save when picks change.
-  useEffect(() => {
-    if (!enabled || !uid || !name || viewingFriendUid || locked || lockedRef.current) return;
+    const payloadJson = winnersJson(winners);
+    if (payloadJson === lastPersistedJsonRef.current) return;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    isSavingRef.current = true;
-
-    saveTimerRef.current = setTimeout(async () => {
-      const payload = winnersRef.current;
-      pendingWriteRef.current = JSON.stringify(payload);
-      try {
-        await setDoc(
-          doc(db, PREDICTIONS_COLLECTION, uid),
-          {
-            uid,
-            name,
-            winners: payload,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        pendingWriteRef.current = null;
-        isSavingRef.current = false;
-        console.error("[WC26] Failed to save picks:", err);
-      }
+    saveTimerRef.current = setTimeout(() => {
+      void persistWinners(winnersRef.current);
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [enabled, uid, name, winners, viewingFriendUid, locked]);
+  }, [enabled, uid, name, winners, persistWinners]);
 
   const submitName = useCallback(async (rawName) => {
     const trimmed = rawName.trim();
@@ -195,6 +238,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         const credential = await signInAnonymously(auth);
         userId = credential.user.uid;
         setUid(userId);
+        setAuthError(null);
       }
 
       setName(trimmed);
@@ -202,24 +246,15 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       loadedRemoteRef.current = true;
 
       const payload = winnersRef.current;
-      pendingWriteRef.current = JSON.stringify(payload);
-      await setDoc(
-        doc(db, PREDICTIONS_COLLECTION, userId),
-        {
-          uid: userId,
-          name: trimmed,
-          winners: payload,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
+      const ok = await persistWinners(payload, { force: true });
+      if (!ok) return false;
       return true;
     } catch (err) {
       console.error("[WC26] Failed to sign in or save profile:", err);
+      setAuthError(formatSyncError(err, "auth"));
       throw err;
     }
-  }, []);
+  }, [persistWinners]);
 
   useEffect(() => {
     if (!enabled) {
@@ -230,6 +265,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUid(user.uid);
+        setAuthError(null);
         setAuthReady(true);
         return;
       }
@@ -237,8 +273,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       try {
         const credential = await signInAnonymously(auth);
         setUid(credential.user.uid);
+        setAuthError(null);
       } catch (err) {
         console.error("[WC26] Anonymous sign-in failed — enable it in Firebase Console → Authentication:", err);
+        setAuthError(formatSyncError(err, "auth"));
       } finally {
         setAuthReady(true);
       }
@@ -263,7 +301,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     setLocking(true);
     try {
       const payload = winnersRef.current;
-      pendingWriteRef.current = JSON.stringify(payload);
+      const payloadJson = winnersJson(payload);
+      pendingWriteRef.current = payloadJson;
       await setDoc(
         doc(db, PREDICTIONS_COLLECTION, uid),
         {
@@ -276,7 +315,9 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         },
         { merge: true }
       );
+      lastPersistedJsonRef.current = payloadJson;
       wasLockedRef.current = true;
+      setSyncError(null);
       return true;
     } catch (err) {
       pendingWriteRef.current = null;
@@ -284,6 +325,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       lockedRef.current = false;
       setLocked(false);
       console.error("[WC26] Failed to lock picks:", err);
+      setSyncError(formatSyncError(err));
       return false;
     } finally {
       lockingRef.current = false;
@@ -291,8 +333,15 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     }
   }, [uid, locked, name]);
 
+  const clearSyncError = useCallback(() => {
+    setSyncError(null);
+    setAuthError(null);
+  }, []);
+
   useEffect(() => {
     setProfileLoaded(false);
+    loadedRemoteRef.current = false;
+    lastPersistedJsonRef.current = null;
   }, [uid]);
 
   return {
@@ -301,6 +350,11 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     needsName,
     profileLoaded,
     authReady,
+    authError,
+    syncError,
+    syncing,
+    clearSyncError,
+    persistWinners,
     submitName,
     locked,
     locking,

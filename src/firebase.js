@@ -20,16 +20,17 @@ export const db = getFirestore(app);
 export const PREDICTIONS_COLLECTION = "predictions";
 
 /**
- * Recommended Firestore rules (Firebase Console → Firestore → Rules):
+ * Firebase Console setup for production (e.g. Cloudflare Workers):
+ * 1. Authentication → Sign-in method → enable Anonymous
+ * 2. Authentication → Settings → Authorized domains → add your host
+ *    (e.g. worldcup-26-scores.brainants.workers.dev)
+ *
+ * Firestore rules:
  *
  *   match /predictions/{userId} {
  *     allow read: if true;
  *     allow create: if request.auth != null && request.auth.uid == userId;
- *     allow update: if request.auth != null && request.auth.uid == userId
- *       && !resource.data.get('locked', false)
- *       && (!('locked' in request.resource.data) || request.resource.data.locked == true);
+ *     allow update: if request.auth != null && request.auth.uid == userId;
+ *     allow delete: if false;
  *   }
- *
- * Users can lock (set locked: true) but cannot unlock or edit while locked.
- * Admin unlock: set locked to false in Firebase Console for that document.
  */

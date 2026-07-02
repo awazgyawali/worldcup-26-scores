@@ -21,8 +21,7 @@
   --border: color-mix(in oklch, var(--text-primary) 9%, transparent);
   --border-strong: color-mix(in oklch, var(--text-primary) 17%, transparent);
 
-  /* 9 card columns (4 + podium + 4) + 8 connectors must fit the viewport;
-     clamped so cards stay readable — below the min the bracket scrolls. */
+  /* 9 card columns (4 + podium + 4) + connectors */
   --match-card-w: clamp(6.75rem, calc((100vw - 300px) / 9), 11.5rem);
   /* One R32 slot; card is ~68px tall, the rest is breathing room between games. */
   --bracket-row: 5.25rem;
@@ -75,7 +74,9 @@ body {
 .bracket-viewport {
   flex: 1 1 0;
   min-height: 0;
+  min-width: 0;
   height: 100%;
+  width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   --bracket-row: max(4.25rem, calc(100% / 8));
@@ -84,6 +85,41 @@ body {
 .bracket-tree {
   height: 100%;
   min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 1rem;
+}
+
+.bracket-col {
+  flex-shrink: 0;
+  width: var(--match-card-w);
+}
+
+.bracket-sf-connector {
+  width: 2.25rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1024px) {
+  .bracket-viewport {
+    overflow-x: hidden;
+  }
+
+  .bracket-tree {
+    padding-inline: 0.75rem;
+  }
+
+  .bracket-col {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 4.5rem;
+    max-width: none;
+  }
+
+  .podium-column {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .app-shell::before {
@@ -531,6 +567,48 @@ body {
 .ball-bounce { animation: ballBounce 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
 .ball-shadow { animation: ballShadow 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
 
+.boot-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in oklch, var(--pitch) 18%, transparent), transparent 70%),
+    var(--bg-deep);
+}
+
+.boot-loading__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.boot-loading__ball {
+  font-size: 4.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.boot-loading__shadow {
+  margin-top: 0.35rem;
+  width: 2.75rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  filter: blur(2px);
+}
+
+.boot-loading__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ---------------------------------------------------------------- ticker */
 .ticker-scroll {
   scrollbar-width: none;
@@ -568,14 +646,44 @@ body {
 .prediction-rail {
   flex-shrink: 0;
   z-index: 30;
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
   border-top: 1px solid var(--border);
   background: color-mix(in oklch, var(--bg-mid) 94%, transparent);
   backdrop-filter: blur(14px) saturate(1.2);
-  padding: 0.45rem 0.65rem;
+  padding: 0.45rem 0.5rem;
+}
+
+.prediction-rail__nav {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2rem;
+  align-self: center;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--bg-elevated) 90%, transparent);
+  color: var(--text-secondary);
+  font-size: 1.35rem;
+  line-height: 1;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.prediction-rail__nav:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.prediction-rail__nav:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .prediction-rail__scroll {
   display: flex;
+  flex: 1;
   min-width: 0;
   align-items: stretch;
   gap: 0.4rem;
@@ -758,14 +866,6 @@ body {
   font-weight: 800;
 }
 
-.rail-card__pick-hint {
-  margin-top: 0.05rem;
-  font-size: 0.5rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--gold-bright);
-}
-
 .rail-card--correct {
   border-color: color-mix(in oklch, var(--pitch-glow) 42%, transparent);
 }
@@ -800,11 +900,25 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
     0 14px 30px -16px rgba(0, 0, 0, 0.7);
 }
+.rail-card--upcoming {
+  border-style: dashed;
+  border-color: color-mix(in oklch, var(--text-muted) 38%, transparent);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.015) 50%,
+    transparent 100%
+  );
+}
+.rail-card--upcoming:hover {
+  border-color: color-mix(in oklch, var(--text-primary) 28%, transparent);
+}
 .rail-card--live {
   border-color: color-mix(in oklch, var(--live) 55%, transparent);
   animation: liveGlow 2.4s ease-in-out infinite;
 }
 .rail-card--next {
+  border-style: dashed;
   border-color: color-mix(in oklch, var(--next) 50%, transparent);
   box-shadow: 0 0 24px -8px color-mix(in oklch, var(--next) 45%, transparent);
 }
@@ -840,7 +954,93 @@ body {
   border-color: color-mix(in oklch, var(--gold) 40%, transparent);
 }
 
+.match-predictions-list {
+  margin-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.55rem;
+}
+
+.match-predictions-list__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.match-predictions-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.match-predictions-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.match-predictions-list__name {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-predictions-list__score {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  color: var(--gold-bright);
+  white-space: nowrap;
+}
+
 /* points pill + compact popover */
+.podium-column {
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  align-self: stretch;
+  padding-inline: 0.75rem;
+}
+
+.podium-column__above {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-height: 0;
+  padding-bottom: 0.45rem;
+}
+
+.podium-column__final {
+  grid-row: 2;
+  justify-self: center;
+}
+
+.podium-column__below {
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 0;
+  padding-top: 0.45rem;
+}
+
 .points-podium {
   display: flex;
   justify-content: center;
@@ -1769,6 +1969,63 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- sync status tooltip (fixed — no layout shift) */
+.sync-tooltip {
+  position: fixed;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: min(22rem, calc(100vw - 1.25rem));
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.sync-tooltip p {
+  margin: 0;
+  flex: 1;
+}
+
+.sync-tooltip--saving {
+  background: color-mix(in oklch, var(--bg-elevated) 92%, transparent);
+  border: 1px solid color-mix(in oklch, var(--next) 35%, var(--border));
+  color: var(--next);
+  backdrop-filter: blur(10px);
+}
+
+.sync-tooltip--error {
+  pointer-events: auto;
+  background: color-mix(in oklch, var(--wrong) 16%, var(--bg-elevated));
+  border: 1px solid color-mix(in oklch, var(--wrong) 40%, var(--border));
+  color: var(--wrong);
+  backdrop-filter: blur(10px);
+}
+
+.sync-tooltip__dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.sync-tooltip__dismiss:hover {
+  opacity: 1;
 }
 
 /* ---------------------------------------------------------------- points earned badge - small circular top-right indicator */
