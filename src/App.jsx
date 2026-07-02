@@ -3406,7 +3406,7 @@ export default function App() {
   };
   const showBracket = teams.length === 32;
   const docsLoading = !!uid && !profileLoaded;
-  const appLoading = !authReady || docsLoading || loading;
+  const appLoading = !needsName && (!authReady || docsLoading || loading);
   const bootLabel = !authReady
     ? "Signing in"
     : docsLoading

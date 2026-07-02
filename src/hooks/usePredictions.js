@@ -145,79 +145,85 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
           .filter((f) => f.name)
           .sort((a, b) => a.name.localeCompare(b.name));
         setFriends(list);
-
-        const self = uidRef.current ? list.find((f) => f.uid === uidRef.current) : null;
-
-        if (!uidRef.current) return;
-
-        setProfileLoaded(true);
-
-        if (!self) {
-          loadedRemoteRef.current = true;
-          setName("");
-          setNeedsName(true);
-          return;
-        }
-
-        setName(self.name);
-        setNeedsName(false);
-
-        const isLocked = self.locked;
-        if (isLocked) {
-          lockedRef.current = true;
-          setLocked(true);
-        } else if (!lockingRef.current) {
-          lockedRef.current = false;
-          setLocked(false);
-        }
-
-        const remoteWinners = self.winners;
-        const hasRemote = Object.keys(remoteWinners).length > 0;
-        const remoteJson = winnersJson(remoteWinners);
-        const isEcho = pendingWriteRef.current === remoteJson;
-
-        if (isEcho) {
-          pendingWriteRef.current = null;
-          isSavingRef.current = false;
-          lastPersistedJsonRef.current = remoteJson;
-        }
-
-        const shouldSyncSelf =
-          !viewingFriendUidRef.current &&
-          hasRemote &&
-          !isEcho &&
-          !isSavingRef.current &&
-          (isLocked ||
-            lockedRef.current ||
-            !loadedRemoteRef.current ||
-            (wasLockedRef.current && !isLocked) ||
-            remoteJson !== winnersJson(winnersRef.current));
-
-        if (shouldSyncSelf) {
-          lastPersistedJsonRef.current = remoteJson;
-          const force =
-            isLocked ||
-            lockedRef.current ||
-            (wasLockedRef.current && !isLocked) ||
-            !loadedRemoteRef.current;
-          onRemoteWinnersRef.current?.(remoteWinners, { force });
-        } else if (hasRemote && !isEcho) {
-          // Remote is current — treat as persisted even if local state already matches.
-          lastPersistedJsonRef.current = remoteJson;
-        }
-
-        loadedRemoteRef.current = true;
-        wasLockedRef.current = isLocked || lockedRef.current;
       },
       (err) => {
         console.error("[WC26] Firestore listener error:", err);
         setSyncError(formatSyncError(err, "listen"));
         setFriends([]);
+        if (uidRef.current) {
+          setProfileLoaded(true);
+          setNeedsName(true);
+        }
       }
     );
 
     return unsub;
   }, [enabled]);
+
+  // Resolve the signed-in user's profile once auth uid and the friends list are available.
+  useEffect(() => {
+    if (!enabled || !uid) return;
+
+    setProfileLoaded(true);
+
+    const self = friends.find((f) => f.uid === uid) ?? null;
+
+    if (!self) {
+      loadedRemoteRef.current = true;
+      setName("");
+      setNeedsName(true);
+      return;
+    }
+
+    setName(self.name);
+    setNeedsName(false);
+
+    const isLocked = self.locked;
+    if (isLocked) {
+      lockedRef.current = true;
+      setLocked(true);
+    } else if (!lockingRef.current) {
+      lockedRef.current = false;
+      setLocked(false);
+    }
+
+    const remoteWinners = self.winners;
+    const hasRemote = Object.keys(remoteWinners).length > 0;
+    const remoteJson = winnersJson(remoteWinners);
+    const isEcho = pendingWriteRef.current === remoteJson;
+
+    if (isEcho) {
+      pendingWriteRef.current = null;
+      isSavingRef.current = false;
+      lastPersistedJsonRef.current = remoteJson;
+    }
+
+    const shouldSyncSelf =
+      !viewingFriendUidRef.current &&
+      hasRemote &&
+      !isEcho &&
+      !isSavingRef.current &&
+      (isLocked ||
+        lockedRef.current ||
+        !loadedRemoteRef.current ||
+        (wasLockedRef.current && !isLocked) ||
+        remoteJson !== winnersJson(winnersRef.current));
+
+    if (shouldSyncSelf) {
+      lastPersistedJsonRef.current = remoteJson;
+      const force =
+        isLocked ||
+        lockedRef.current ||
+        (wasLockedRef.current && !isLocked) ||
+        !loadedRemoteRef.current;
+      onRemoteWinnersRef.current?.(remoteWinners, { force });
+    } else if (hasRemote && !isEcho) {
+      lastPersistedJsonRef.current = remoteJson;
+    }
+
+    loadedRemoteRef.current = true;
+    wasLockedRef.current = isLocked || lockedRef.current;
+  }, [enabled, uid, friends]);
 
   // Debounced save only when local picks actually differ from last persisted snapshot.
   useEffect(() => {
