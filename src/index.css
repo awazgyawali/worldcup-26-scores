@@ -3,25 +3,29 @@
 :root {
   color-scheme: dark;
 
-  /* Broadcast stadium palette — warm neutrals, pitch green, trophy gold */
-  --bg-deep: #0a1018;
-  --bg-mid: #111a27;
-  --bg-surface: #162030;
-  --bg-elevated: #1c2a3d;
-  --text-primary: #f0ebe3;
-  --text-secondary: #b8c4d4;
-  --text-muted: #6d7f96;
-  --pitch: #3a7d5c;
-  --pitch-glow: #52b87a;
+  /* Broadcast stadium palette — deep night, pitch green, trophy gold */
+  --bg-deep: #070d15;
+  --bg-mid: #0d1622;
+  --bg-surface: #131f2e;
+  --bg-elevated: #1a2939;
+  --text-primary: #f2eee6;
+  --text-secondary: #b6c2d2;
+  --text-muted: #64768c;
+  --pitch: #2e8f5f;
+  --pitch-glow: #4ade80;
   --gold: #d4a84b;
-  --gold-bright: #f0c96e;
-  --live: #e06363;
-  --next: #5a9fd4;
+  --gold-bright: #f5cd6e;
+  --live: #fb5d5d;
+  --next: #38bdf8;
+  --wrong: #f87171;
   --border: color-mix(in oklch, var(--text-primary) 9%, transparent);
-  --border-strong: color-mix(in oklch, var(--text-primary) 16%, transparent);
+  --border-strong: color-mix(in oklch, var(--text-primary) 17%, transparent);
 
-  --match-card-h: 5rem;
-  --match-card-w: calc(var(--match-card-h) * 1.6);
+  /* 9 card columns (4 + podium + 4) + 8 connectors must fit the viewport;
+     clamped so cards stay readable — below the min the bracket scrolls. */
+  --match-card-w: clamp(6.75rem, calc((100vw - 300px) / 9), 11.5rem);
+  /* One R32 slot; card is ~68px tall, the rest is breathing room between games. */
+  --bracket-row: 5.25rem;
 
   --font-display: "Bebas Neue", sans-serif;
   --font-body: "DM Sans", system-ui, sans-serif;
@@ -42,12 +46,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Stadium pitch texture — subtle hex grid */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+/* ---------------------------------------------------------------- shell */
 .app-shell {
   min-height: 100%;
   background:
-    radial-gradient(ellipse 90% 55% at 50% -5%, color-mix(in oklch, var(--pitch) 18%, transparent), transparent 55%),
-    radial-gradient(ellipse 70% 40% at 50% 100%, color-mix(in oklch, var(--gold) 6%, transparent), transparent 50%),
+    radial-gradient(ellipse 95% 50% at 50% -8%, color-mix(in oklch, var(--pitch) 17%, transparent), transparent 58%),
+    radial-gradient(ellipse 65% 38% at 50% 104%, color-mix(in oklch, var(--gold) 7%, transparent), transparent 55%),
     var(--bg-deep);
 }
 
@@ -56,87 +65,106 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.35;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 0 L56 16.67 L56 50 L28 66.67 L0 50 L0 16.67 Z M28 33.33 L56 50 L56 83.33 L28 100 L0 83.33 L0 50 Z' fill='none' stroke='%233a7d5c' stroke-width='0.4' opacity='0.12'/%3E%3C/svg%3E");
+  opacity: 0.32;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 0 L56 16.67 L56 50 L28 66.67 L0 50 L0 16.67 Z M28 33.33 L56 50 L56 83.33 L28 100 L0 83.33 L0 50 Z' fill='none' stroke='%232e8f5f' stroke-width='0.4' opacity='0.14'/%3E%3C/svg%3E");
   background-size: 56px 100px;
   mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 20%, transparent 75%);
 }
 
-.font-display {
-  font-family: var(--font-display);
-  letter-spacing: 0.04em;
+/* ---------------------------------------------------------------- header */
+.broadcast-bar {
+  background: color-mix(in oklch, var(--bg-mid) 82%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(18px) saturate(1.3);
 }
 
-/* Match ticket card */
+/* ---------------------------------------------------------------- ticket */
 .match-ticket {
   background: linear-gradient(
-    165deg,
-    color-mix(in oklch, var(--bg-elevated) 92%, var(--pitch) 8%) 0%,
-    var(--bg-surface) 100%
+    160deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.035) 45%,
+    rgba(255, 255, 255, 0.015) 100%
   );
-  border: 1px solid var(--border);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 1px 0 color-mix(in oklch, white 6%, transparent) inset,
-    0 12px 32px -16px rgba(0, 0, 0, 0.65);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 24px -12px rgba(255, 255, 255, 0.08),
+    0 10px 28px -14px rgba(0, 0, 0, 0.55);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease, background 0.25s ease;
+}
+
+.match-ticket:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 45%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  transform: translateY(-1px);
 }
 
 .match-ticket--live {
-  border-color: color-mix(in oklch, var(--live) 45%, transparent);
+  border-color: color-mix(in oklch, var(--live) 55%, transparent);
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--live) 20%, transparent),
-    0 0 28px -6px color-mix(in oklch, var(--live) 35%, transparent);
+    0 0 0 1px color-mix(in oklch, var(--live) 25%, transparent),
+    0 0 30px -6px color-mix(in oklch, var(--live) 45%, transparent);
+  animation: liveGlow 2.4s ease-in-out infinite;
+}
+
+@keyframes liveGlow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--live) 22%, transparent), 0 0 22px -6px color-mix(in oklch, var(--live) 35%, transparent); }
+  50% { box-shadow: 0 0 0 1px color-mix(in oklch, var(--live) 40%, transparent), 0 0 36px -4px color-mix(in oklch, var(--live) 60%, transparent); }
 }
 
 .match-ticket--next {
-  border-color: color-mix(in oklch, var(--next) 40%, transparent);
-  box-shadow: 0 0 24px -8px color-mix(in oklch, var(--next) 30%, transparent);
+  border-color: color-mix(in oklch, var(--next) 45%, transparent);
+  box-shadow: 0 0 26px -8px color-mix(in oklch, var(--next) 40%, transparent);
 }
 
-.match-ticket--picked {
-  border-color: color-mix(in oklch, var(--pitch-glow) 35%, transparent);
-}
-
-/* Team row — broadcast lower-third strip */
+/* ---------------------------------------------------------------- team row */
 .team-strip {
   border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
   transition: background 0.18s ease, border-color 0.18s ease;
 }
 
 .team-strip--winner {
   border-left-color: var(--pitch-glow);
-  background: color-mix(in oklch, var(--pitch) 14%, transparent);
+  background: color-mix(in oklch, var(--pitch) 16%, transparent);
 }
 
-.team-strip--right.team-strip--winner {
+.team-strip--winner.team-strip--right {
   border-left-color: transparent;
   border-right-color: var(--pitch-glow);
 }
 
+.team-strip--correct {
+  border-left-color: var(--pitch-glow);
+  background: color-mix(in oklch, var(--pitch-glow) 13%, transparent);
+}
+.team-strip--correct.team-strip--right {
+  border-left-color: transparent;
+  border-right-color: var(--pitch-glow);
+}
+
+.team-strip--wrong {
+  border-left-color: var(--wrong);
+  background: color-mix(in oklch, var(--wrong) 8%, transparent);
+}
+.team-strip--wrong.team-strip--right {
+  border-left-color: transparent;
+  border-right-color: var(--wrong);
+}
+
 .team-strip:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--text-primary) 5%, transparent);
+  background: color-mix(in oklch, var(--text-primary) 6%, transparent);
 }
 
-/* Header broadcast bar */
-.broadcast-bar {
-  background: color-mix(in oklch, var(--bg-mid) 88%, transparent);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(16px) saturate(1.2);
-}
-
-/* Buttons */
-.btn-primary {
-  background: var(--pitch);
-  color: var(--text-primary);
-  font-weight: 600;
-  transition: background 0.18s ease, transform 0.12s ease;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--pitch-glow);
-}
-.btn-primary:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
+/* ---------------------------------------------------------------- buttons */
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
@@ -150,48 +178,135 @@ body {
   border-color: var(--border-strong);
 }
 
-.btn-active {
-  background: color-mix(in oklch, var(--pitch) 22%, transparent);
-  color: var(--pitch-glow);
-  border: 1px solid color-mix(in oklch, var(--pitch-glow) 35%, transparent);
-}
-
-/* Live pulse */
+/* ---------------------------------------------------------------- pulses */
 @keyframes livePulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.55;
-    transform: scale(0.85);
-  }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+.live-dot { animation: livePulse 1.3s ease-in-out infinite; }
+
+@keyframes ping {
+  0% { transform: scale(1); opacity: 0.7; }
+  80%, 100% { transform: scale(2.4); opacity: 0; }
+}
+.live-ping { animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+/* ---------------------------------------------------------------- shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--bg-surface) 40%,
+    color-mix(in oklch, var(--bg-elevated) 80%, white 4%) 50%,
+    var(--bg-surface) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border: 1px solid var(--border);
 }
 
-.live-dot {
-  animation: livePulse 1.4s ease-in-out infinite;
+/* ---------------------------------------------------------------- ball loader */
+@keyframes ballBounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-22px) rotate(180deg); }
+}
+@keyframes ballShadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.35; }
+  50% { transform: scaleX(0.55); opacity: 0.15; }
+}
+.ball-bounce { animation: ballBounce 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
+.ball-shadow { animation: ballShadow 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
+
+/* ---------------------------------------------------------------- ticker */
+.ticker-scroll {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.ticker-scroll::-webkit-scrollbar { display: none; }
+
+.ticker-chip {
+  background: color-mix(in oklch, var(--bg-surface) 85%, transparent);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+.ticker-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  transform: translateY(-1px);
+}
+.ticker-chip--live {
+  border-color: color-mix(in oklch, var(--live) 50%, transparent);
+  background: color-mix(in oklch, var(--live) 9%, var(--bg-surface));
+}
+.ticker-chip--next {
+  border-color: color-mix(in oklch, var(--next) 45%, transparent);
 }
 
-/* Scrollbar */
-.bracket-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-.bracket-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.bracket-scroll::-webkit-scrollbar-thumb {
+/* ---------------------------------------------------------------- scrollbars */
+.nice-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.nice-scroll::-webkit-scrollbar-track { background: transparent; }
+.nice-scroll::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 99px;
 }
 
-/* Scoreboard slide */
-@keyframes accentPulse {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
+/* ---------------------------------------------------------------- games rail */
+.edge-fade-x {
+  mask-image: linear-gradient(to right, transparent, black 2.5%, black 97.5%, transparent);
+}
+
+.rail-card {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 50%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: border-color 0.22s ease, transform 0.18s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+.rail-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.045) 50%, rgba(255, 255, 255, 0.02) 100%);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 14px 30px -16px rgba(0, 0, 0, 0.7);
+}
+.rail-card--live {
+  border-color: color-mix(in oklch, var(--live) 55%, transparent);
+  animation: liveGlow 2.4s ease-in-out infinite;
+}
+.rail-card--next {
+  border-color: color-mix(in oklch, var(--next) 50%, transparent);
+  box-shadow: 0 0 24px -8px color-mix(in oklch, var(--next) 45%, transparent);
+}
+
+/* round jump pills */
+.round-pill {
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--bg-surface) 80%, transparent);
+  transition: all 0.2s ease;
+}
+.round-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.round-pill--active {
+  border-color: color-mix(in oklch, var(--pitch-glow) 45%, transparent);
+  background: color-mix(in oklch, var(--pitch) 20%, transparent);
+  color: var(--pitch-glow);
+}
+
+/* ---------------------------------------------------------------- modal timeline */
+.goal-minute {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-variant-numeric: tabular-nums;
 }

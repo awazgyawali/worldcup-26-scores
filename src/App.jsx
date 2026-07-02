@@ -1,126 +1,71 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 /* ============================================================================
  *  FIFA WORLD CUP 2026 — KNOCKOUT BRACKET PREDICTOR
- *  R32 matchups load from openfootball/worldcup.json in official bracket order.
+ *  Data: openfootball/worldcup.json. Every bracket slot maps to a JSON match
+ *  number (73–104), so live scores, goal scorers, venues, extra time and
+ *  penalty shootouts all attach exactly where they belong.
+ *
+ *  Layout: a linear, chronological games rail up top + a horizontally
+ *  scrollable left→right bracket with round-jump navigation.
  * ==========================================================================*/
 
 // ----------------------------------------------------------------------------
-// TEAM METADATA — iso2 codes for flagcdn; display names for JSON aliases.
+// TEAM METADATA — FIFA trigram codes + iso2 for flagcdn.
 // ----------------------------------------------------------------------------
-const TEAM_ISO2 = {
-  Algeria: "dz",
-  Argentina: "ar",
-  Australia: "au",
-  Austria: "at",
-  Belgium: "be",
-  "Bosnia & Herzegovina": "ba",
-  Brazil: "br",
-  Canada: "ca",
-  "Cape Verde": "cv",
-  Colombia: "co",
-  Croatia: "hr",
-  "Curaçao": "cw",
-  "Czech Republic": "cz",
-  "DR Congo": "cd",
-  Ecuador: "ec",
-  Egypt: "eg",
-  England: "gb-eng",
-  France: "fr",
-  Germany: "de",
-  Ghana: "gh",
-  Haiti: "ht",
-  Iran: "ir",
-  Iraq: "iq",
-  "Ivory Coast": "ci",
-  Japan: "jp",
-  Jordan: "jo",
-  Mexico: "mx",
-  Morocco: "ma",
-  Netherlands: "nl",
-  "New Zealand": "nz",
-  Norway: "no",
-  Panama: "pa",
-  Paraguay: "py",
-  Portugal: "pt",
-  Qatar: "qa",
-  "Saudi Arabia": "sa",
-  Scotland: "gb-sct",
-  Senegal: "sn",
-  "South Africa": "za",
-  "South Korea": "kr",
-  Spain: "es",
-  Sweden: "se",
-  Switzerland: "ch",
-  Tunisia: "tn",
-  Turkey: "tr",
-  USA: "us",
-  Uruguay: "uy",
-  Uzbekistan: "uz",
-  "United States": "us",
+const TEAM_META = {
+  Algeria: ["dz", "ALG"],
+  Argentina: ["ar", "ARG"],
+  Australia: ["au", "AUS"],
+  Austria: ["at", "AUT"],
+  Belgium: ["be", "BEL"],
+  "Bosnia & Herzegovina": ["ba", "BIH"],
+  Brazil: ["br", "BRA"],
+  Canada: ["ca", "CAN"],
+  "Cape Verde": ["cv", "CPV"],
+  Colombia: ["co", "COL"],
+  Croatia: ["hr", "CRO"],
+  "Curaçao": ["cw", "CUW"],
+  "Czech Republic": ["cz", "CZE"],
+  "DR Congo": ["cd", "COD"],
+  Ecuador: ["ec", "ECU"],
+  Egypt: ["eg", "EGY"],
+  England: ["gb-eng", "ENG"],
+  France: ["fr", "FRA"],
+  Germany: ["de", "GER"],
+  Ghana: ["gh", "GHA"],
+  Haiti: ["ht", "HAI"],
+  Iran: ["ir", "IRN"],
+  Iraq: ["iq", "IRQ"],
+  Italy: ["it", "ITA"],
+  "Ivory Coast": ["ci", "CIV"],
+  Japan: ["jp", "JPN"],
+  Jordan: ["jo", "JOR"],
+  Mexico: ["mx", "MEX"],
+  Morocco: ["ma", "MAR"],
+  Netherlands: ["nl", "NED"],
+  "New Zealand": ["nz", "NZL"],
+  Norway: ["no", "NOR"],
+  Panama: ["pa", "PAN"],
+  Paraguay: ["py", "PAR"],
+  Portugal: ["pt", "POR"],
+  Qatar: ["qa", "QAT"],
+  "Saudi Arabia": ["sa", "KSA"],
+  Scotland: ["gb-sct", "SCO"],
+  Senegal: ["sn", "SEN"],
+  "South Africa": ["za", "RSA"],
+  "South Korea": ["kr", "KOR"],
+  Spain: ["es", "ESP"],
+  Sweden: ["se", "SWE"],
+  Switzerland: ["ch", "SUI"],
+  Tunisia: ["tn", "TUN"],
+  Turkey: ["tr", "TUR"],
+  USA: ["us", "USA"],
+  "United States": ["us", "USA"],
+  Uruguay: ["uy", "URU"],
+  Uzbekistan: ["uz", "UZB"],
 };
-
-const TEAM_DISPLAY = {
-  USA: "United States",
-};
-
-// JSON match numbers → bracket slots 0–15 (left half 0–7, right half 8–15).
-// Derived from R16 feeder paths (W74, W77, …) in the official knockout tree.
-const R32_SLOT_TO_JSON_NUM = [
-  74, 77, 73, 75, 83, 84, 81, 82, // left half
-  76, 78, 79, 80, 86, 88, 85, 87, // right half
-];
-
-const makeTeam = (jsonName, index) => {
-  const name = TEAM_DISPLAY[jsonName] || jsonName;
-  const iso2 = isoForName(jsonName === name ? name : jsonName) || isoForName(name);
-  return { id: `${iso2}-${index}`, name, iso2 };
-};
-
-const buildR32TeamsFromMatches = (byNum) => {
-  const teams = [];
-  for (let slot = 0; slot < R32_SLOT_TO_JSON_NUM.length; slot++) {
-    const m = byNum.get(R32_SLOT_TO_JSON_NUM[slot]);
-    if (!m) return null;
-    teams.push(makeTeam(m.team1, slot * 2));
-    teams.push(makeTeam(m.team2, slot * 2 + 1));
-  }
-  return teams.length === 32 ? teams : null;
-};
-
-// Rounds from the outside in. `matches` is the TOTAL across both halves.
-const ROUNDS = [
-  { key: "r32", label: "Round of 32", matches: 16, points: 1 },
-  { key: "r16", label: "Round of 16", matches: 8, points: 2 },
-  { key: "qf", label: "Quarterfinal", matches: 4, points: 4 },
-  { key: "sf", label: "Semifinal", matches: 2, points: 7 },
-  { key: "final", label: "Final", matches: 1, points: 12 },
-];
-const FINAL_ROUND = ROUNDS.length - 1;
-const key = (r, m) => `${r}-${m}`;
-/** Rows per bracket half — all rounds + connectors share this vertical grid. */
-const BRACKET_ROWS = 8;
-/** Every match card uses the same width:height ratio across R32 → Final. */
-const MATCH_CARD_ASPECT = 1.6;
-/** Card height as a fraction of one bracket row (R32 slot). */
-const MATCH_CARD_ROW_FRAC = 0.9;
-
-// ----------------------------------------------------------------------------
-// LIVE DATA — openfootball/worldcup.json (knockout scores + kickoffs)
-// ----------------------------------------------------------------------------
-const WORLDCUP_JSON_URL =
-  "https://raw.githubusercontent.com/openfootball/worldcup.json/refs/heads/master/2026/worldcup.json";
-/** Re-fetch the full worldcup.json every 60 seconds (scores, times, R32 teams). */
-const POLL_EVERY_MS = 60_000;
-
-const KNOCKOUT_ROUNDS = new Set([
-  "Round of 32",
-  "Round of 16",
-  "Quarter-final",
-  "Semi-final",
-  "Final",
-]);
 
 const TEAM_ALIASES = {
   usa: "united states",
@@ -134,242 +79,207 @@ const TEAM_ALIASES = {
   "bosnia and herzegovina": "bosnia & herzegovina",
 };
 
+const isRef = (name) => !!name && /^[WL]\d+$/.test(name);
+
 const normTeam = (name) => {
-  if (!name || /^[WL]\d+$/.test(name)) return "";
+  if (!name || isRef(name)) return "";
   const n = name.trim().toLowerCase();
   return TEAM_ALIASES[n] || n;
 };
 
-const teamsMatch = (a, b) => !!normTeam(a) && normTeam(a) === normTeam(b);
+const META_BY_NORM = new Map(
+  Object.entries(TEAM_META).map(([name, [iso2, code]]) => [
+    normTeam(name),
+    { name: name === "USA" ? "United States" : name, iso2, code },
+  ])
+);
 
-const pairKey = (a, b) => [normTeam(a), normTeam(b)].sort().join("|");
-
-const teamById = (id, teams) => teams?.find((t) => t.id === id) || null;
-
-const teamByName = (name, teams) => {
-  if (!name || !teams?.length) return null;
-  const n = normTeam(name);
-  return teams.find((t) => normTeam(t.name) === n) || null;
+/** Team object: { code (id), name, iso2 } — or a graceful fallback. */
+const teamFor = (jsonName) => {
+  if (!jsonName || isRef(jsonName)) return null;
+  const meta = META_BY_NORM.get(normTeam(jsonName));
+  if (meta) return { id: meta.code, code: meta.code, name: meta.name, iso2: meta.iso2 };
+  const code = jsonName.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase() || "TBD";
+  return { id: code, code, name: jsonName, iso2: "un" };
 };
+
+// ----------------------------------------------------------------------------
+// BRACKET SHAPE — JSON match numbers per slot, left→right.
+// ----------------------------------------------------------------------------
+const ROUNDS = [
+  { key: "r32", label: "Round of 32", short: "R32", matches: 16, points: 1, nums: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87] },
+  { key: "r16", label: "Round of 16", short: "R16", matches: 8, points: 2, nums: [89, 90, 93, 94, 91, 92, 95, 96] },
+  { key: "qf", label: "Quarter-finals", short: "QF", matches: 4, points: 4, nums: [97, 98, 99, 100] },
+  { key: "sf", label: "Semi-finals", short: "SF", matches: 2, points: 7, nums: [101, 102] },
+  { key: "final", label: "Final", short: "F", matches: 1, points: 12, nums: [104] },
+];
+const FINAL_ROUND = ROUNDS.length - 1;
+const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 3, num: 103 };
+const key = (r, m) => `${r}-${m}`;
+/** Rows per bracket half — the tree converges from both sides into the final. */
+const BRACKET_ROWS = 8;
+
+const ROUND_LABEL = {
+  "Round of 32": "Round of 32",
+  "Round of 16": "Round of 16",
+  "Quarter-final": "Quarter-final",
+  "Semi-final": "Semi-final",
+  "Match for third place": "Third place",
+  Final: "Final",
+};
+const ROUND_SHORT = {
+  "Round of 32": "R32",
+  "Round of 16": "R16",
+  "Quarter-final": "QF",
+  "Semi-final": "SF",
+  "Match for third place": "3RD",
+  Final: "FINAL",
+};
+
+// ----------------------------------------------------------------------------
+// LIVE DATA — openfootball/worldcup.json
+// ----------------------------------------------------------------------------
+const WORLDCUP_JSON_URL =
+  "https://raw.githubusercontent.com/openfootball/worldcup.json/refs/heads/master/2026/worldcup.json";
+const POLL_EVERY_MS = 60_000;
 
 const parseKickoff = (date, timeStr) => {
   if (!date || !timeStr) return null;
   const m = timeStr.match(/(\d{1,2}):(\d{2})\s+UTC([+-]?\d+)/);
   if (!m) return null;
   const [, hh, mm, off] = m;
-  const offsetHours = parseInt(off, 10);
-  const utcH = parseInt(hh, 10) - offsetHours;
   const [y, mo, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, d, utcH, parseInt(mm, 10)));
+  return new Date(Date.UTC(y, mo - 1, d, parseInt(hh, 10) - parseInt(off, 10), parseInt(mm, 10)));
 };
 
+/**
+ * Full result of a match, honouring extra time and penalty shootouts:
+ * { score: [a,b]|null, ht, pens, phase: "ft"|"aet"|"pens"|null, winnerIdx: 0|1|null }
+ * A knockout draw with no shootout yet means the match is still being decided.
+ */
+const readScore = (m) => {
+  const s = m.score || {};
+  const score = s.et ?? s.ft ?? null;
+  if (!score) return { score: null, ht: s.ht ?? null, pens: null, phase: null, winnerIdx: null };
+  let phase = s.et ? "aet" : "ft";
+  let winnerIdx = null;
+  if (score[0] !== score[1]) winnerIdx = score[0] > score[1] ? 0 : 1;
+  else if (s.p) {
+    phase = "pens";
+    winnerIdx = s.p[0] > s.p[1] ? 0 : 1;
+  }
+  return { score, ht: s.ht ?? null, pens: s.p ?? null, phase, winnerIdx };
+};
+
+/** Resolve W##/L## refs through the byNum map using full (et/pens) results. */
 const resolveTeamRef = (ref, byNum) => {
-  if (!ref) return null;
-  if (!/^[WL]\d+$/.test(ref)) return ref;
-  const isWinner = ref[0] === "W";
-  const num = parseInt(ref.slice(1), 10);
-  const match = byNum.get(num);
-  if (!match) return ref;
+  if (!ref || !isRef(ref)) return ref || null;
+  const match = byNum.get(parseInt(ref.slice(1), 10));
+  if (!match) return null;
   const t1 = resolveTeamRef(match.team1, byNum);
   const t2 = resolveTeamRef(match.team2, byNum);
-  if (!match.score?.ft) return ref;
-  const [s1, s2] = match.score.ft;
-  if (s1 === s2) return ref;
-  const winner = s1 > s2 ? t1 : t2;
-  const loser = s1 > s2 ? t2 : t1;
-  return isWinner ? winner : loser;
+  const { winnerIdx } = readScore(match);
+  if (winnerIdx == null) return null;
+  const winner = winnerIdx === 0 ? t1 : t2;
+  const loser = winnerIdx === 0 ? t2 : t1;
+  return ref[0] === "W" ? winner : loser;
 };
 
-const getMatchStatus = (kickoff, hasScore) => {
-  if (hasScore) return "ft";
-  if (!kickoff) return "scheduled";
+const LIVE_WINDOW_MS = 135 * 60_000; // 90' + HT + ET + shootout margin
+
+const matchStatus = (kickoff, winnerIdx, hasScore, isKnockout) => {
+  if (hasScore && (winnerIdx != null || !isKnockout)) return "played";
   const now = Date.now();
-  const start = kickoff.getTime();
-  if (now < start) return "scheduled";
-  if (now < start + 105 * 60_000) return "live";
-  return "scheduled";
-};
-
-const hasFinalScore = (live) => live?.score1 != null && live?.score2 != null;
-
-const resolveLiveStatus = (live) => {
-  if (!live) return null;
-  return getMatchStatus(live.kickoff, hasFinalScore(live));
-};
-
-const formatKickoff = (d) =>
-  d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-
-const formatMatchTime = (d) => {
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return formatKickoff(d);
-};
-
-const isoForName = (name) => {
-  if (!name) return "un";
-  const display = TEAM_DISPLAY[name] || name;
-  if (TEAM_ISO2[name]) return TEAM_ISO2[name];
-  if (TEAM_ISO2[display]) return TEAM_ISO2[display];
-  const n = normTeam(name);
-  for (const [key, iso] of Object.entries(TEAM_ISO2)) {
-    if (normTeam(key) === n) return iso;
+  if (kickoff && now >= kickoff.getTime()) {
+    if (hasScore || now < kickoff.getTime() + LIVE_WINDOW_MS) return "live";
   }
-  return "un";
+  return "upcoming";
 };
 
-const buildTeamHistories = (allMatches, byNum) => {
-  const histories = new Map();
-  const add = (teamName, entry) => {
-    const k = normTeam(teamName);
-    if (!k) return;
-    if (!histories.has(k)) histories.set(k, []);
-    histories.get(k).push(entry);
+const KNOCKOUT_ROUNDS = new Set([
+  "Round of 32",
+  "Round of 16",
+  "Quarter-final",
+  "Semi-final",
+  "Match for third place",
+  "Final",
+]);
+
+/** Enrich one raw JSON match into everything the UI needs. */
+const enrichMatch = (m, byNum) => {
+  const isKnockout = KNOCKOUT_ROUNDS.has(m.round);
+  const name1 = isRef(m.team1) ? resolveTeamRef(m.team1, byNum) : m.team1;
+  const name2 = isRef(m.team2) ? resolveTeamRef(m.team2, byNum) : m.team2;
+  const kickoff = parseKickoff(m.date, m.time);
+  const { score, ht, pens, phase, winnerIdx } = readScore(m);
+  const status = matchStatus(kickoff, winnerIdx, !!score, isKnockout);
+  return {
+    num: m.num ?? null,
+    round: m.round,
+    roundLabel: ROUND_LABEL[m.round] || m.round,
+    group: m.group || null,
+    date: m.date,
+    kickoff,
+    ground: m.ground || null,
+    isKnockout,
+    ref1: m.team1,
+    ref2: m.team2,
+    team1: teamFor(name1),
+    team2: teamFor(name2),
+    goals1: m.goals1 || [],
+    goals2: m.goals2 || [],
+    score,
+    ht,
+    pens,
+    phase,
+    winnerIdx,
+    winner: winnerIdx == null ? null : teamFor(winnerIdx === 0 ? name1 : name2),
+    status,
   };
-
-  for (const m of allMatches) {
-    const t1 = /^[WL]\d+$/.test(m.team1) ? resolveTeamRef(m.team1, byNum) : m.team1;
-    const t2 = /^[WL]\d+$/.test(m.team2) ? resolveTeamRef(m.team2, byNum) : m.team2;
-    if (!t1 || !t2 || /^[WL]\d+$/.test(t1) || /^[WL]\d+$/.test(t2)) continue;
-
-    const kickoff = parseKickoff(m.date, m.time);
-    const hasScore = Array.isArray(m.score?.ft);
-    const [s1, s2] = hasScore ? m.score.ft : [null, null];
-    const status = getMatchStatus(kickoff, hasScore);
-    const base = {
-      round: m.round,
-      group: m.group || null,
-      date: m.date,
-      kickoff,
-      ground: m.ground || null,
-      status,
-    };
-
-    add(t1, {
-      ...base,
-      opponent: TEAM_DISPLAY[t2] || t2,
-      opponentIso2: isoForName(t2),
-      goalsFor: s1,
-      goalsAgainst: s2,
-    });
-    add(t2, {
-      ...base,
-      opponent: TEAM_DISPLAY[t1] || t1,
-      opponentIso2: isoForName(t1),
-      goalsFor: s2,
-      goalsAgainst: s1,
-    });
-  }
-
-  for (const list of histories.values()) {
-    list.sort((a, b) => (a.kickoff?.getTime() ?? 0) - (b.kickoff?.getTime() ?? 0));
-  }
-  return histories;
 };
 
 const processWorldCupJson = (data) => {
-  const allMatches = data?.matches || [];
+  const all = data?.matches || [];
   const byNum = new Map();
-  allMatches.forEach((m) => {
+  all.forEach((m) => {
     if (m.num) byNum.set(m.num, m);
   });
 
-  const knockout = allMatches.filter((m) => KNOCKOUT_ROUNDS.has(m.round));
+  const matches = all.map((m) => enrichMatch(m, byNum));
+  const enrichedByNum = new Map(matches.filter((m) => m.num).map((m) => [m.num, m]));
 
-  const enriched = knockout.map((m) => {
-    const t1 = resolveTeamRef(m.team1, byNum);
-    const t2 = resolveTeamRef(m.team2, byNum);
-    const kickoff = parseKickoff(m.date, m.time);
-    const hasScore = Array.isArray(m.score?.ft);
-    let score1 = null;
-    let score2 = null;
-    let winner = null;
-    if (hasScore) {
-      [score1, score2] = m.score.ft;
-      if (score1 !== score2) winner = score1 > score2 ? t1 : t2;
+  // Confirmed R32 field (bracket seeds). Null until the group stage settles.
+  let r32Teams = [];
+  for (const num of ROUNDS[0].nums) {
+    const m = enrichedByNum.get(num);
+    if (!m?.team1 || !m?.team2) {
+      r32Teams = null;
+      break;
     }
-    return {
-      ...m,
-      t1,
-      t2,
-      kickoff,
-      score1,
-      score2,
-      winner,
-      status: getMatchStatus(kickoff, hasScore),
-    };
-  });
+    r32Teams.push(m.team1, m.team2);
+  }
 
-  const byPair = new Map();
-  enriched.forEach((m) => {
-    if (m.t1 && m.t2 && !/^[WL]\d+$/.test(m.t1) && !/^[WL]\d+$/.test(m.t2)) {
-      byPair.set(pairKey(m.t1, m.t2), m);
-    }
-  });
-
-  return {
-    byPair,
-    byNum,
-    enriched,
-    r32Teams: buildR32TeamsFromMatches(byNum),
-    teamHistories: buildTeamHistories(allMatches, byNum),
+  // Per-team tournament journey (group stage + knockouts), kickoff order.
+  const journeys = new Map();
+  const push = (team, entry) => {
+    if (!team) return;
+    if (!journeys.has(team.code)) journeys.set(team.code, []);
+    journeys.get(team.code).push(entry);
   };
-};
-
-/** Find the live match and the next upcoming knockout fixture (by JSON kickoff). */
-const computeMatchHighlights = (enriched, liveByKey) => {
-  const now = Date.now();
-  let liveNum = null;
-  let nextNum = null;
-  let nextKickoff = Infinity;
-
-  for (const m of enriched ?? []) {
-    if (/^[WL]\d+$/.test(m.t1) || /^[WL]\d+$/.test(m.t2)) continue;
-    const status = resolveLiveStatus(m);
-    if (status === "live") liveNum = m.num;
-    if (status === "scheduled" && m.kickoff) {
-      const t = m.kickoff.getTime();
-      if (t > now && t < nextKickoff) {
-        nextKickoff = t;
-        nextNum = m.num;
-      }
-    }
+  for (const m of matches) {
+    if (!m.team1 || !m.team2) continue;
+    push(m.team1, { ...m, us: m.team1, them: m.team2, gf: m.score?.[0] ?? null, ga: m.score?.[1] ?? null, ourGoals: m.goals1, theirGoals: m.goals2 });
+    push(m.team2, { ...m, us: m.team2, them: m.team1, gf: m.score?.[1] ?? null, ga: m.score?.[0] ?? null, ourGoals: m.goals2, theirGoals: m.goals1 });
+  }
+  for (const list of journeys.values()) {
+    list.sort((a, b) => (a.kickoff?.getTime() ?? 0) - (b.kickoff?.getTime() ?? 0));
   }
 
-  let liveKey = null;
-  let nextKey = null;
-  for (const [k, live] of Object.entries(liveByKey ?? {})) {
-    if (live.num === liveNum) liveKey = k;
-    if (live.num === nextNum) nextKey = k;
-    if (!liveKey && resolveLiveStatus(live) === "live") liveKey = k;
-  }
-
-  if (!nextKey) {
-    let fallbackKickoff = Infinity;
-    for (const [k, live] of Object.entries(liveByKey ?? {})) {
-      if (resolveLiveStatus(live) !== "scheduled" || !live.kickoff) continue;
-      const t = live.kickoff.getTime();
-      if (t > now && t < fallbackKickoff) {
-        fallbackKickoff = t;
-        nextKey = k;
-      }
-    }
-  }
-
-  return { liveKey, nextKey };
+  return { matches, byNum: enrichedByNum, r32Teams, journeys };
 };
 
-const getLiveForTeams = (byPair, teamA, teamB) => {
-  if (!teamA || !teamB || !byPair?.size) return null;
-  return byPair.get(pairKey(teamA.name, teamB.name)) || null;
-};
-
-function useWorldCupLive() {
-  const [byPair, setByPair] = useState(() => new Map());
-  const [knockout, setKnockout] = useState([]);
-  const [teamHistories, setTeamHistories] = useState(() => new Map());
-  const [r32Teams, setR32Teams] = useState(null);
+function useWorldCup() {
+  const [state, setState] = useState({ matches: [], byNum: new Map(), r32Teams: null, journeys: new Map() });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
@@ -380,17 +290,11 @@ function useWorldCupLive() {
       const res = await fetch(WORLDCUP_JSON_URL, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const processed = processWorldCupJson(data);
-      setByPair(processed.byPair);
-      setKnockout(processed.enriched);
-      setTeamHistories(processed.teamHistories);
-      if (processed.r32Teams) setR32Teams(processed.r32Teams);
+      setState(processWorldCupJson(data));
       setLastUpdated(new Date());
       setError(null);
-      return processed;
     } catch (e) {
       setError(e.message || "Failed to load scores");
-      return null;
     } finally {
       setLoading(false);
     }
@@ -399,10 +303,8 @@ function useWorldCupLive() {
   useEffect(() => {
     fetchLive();
     const refreshId = setInterval(fetchLive, POLL_EVERY_MS);
-    const tickId = setInterval(() => setTick((t) => t + 1), 15_000);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") fetchLive();
-    };
+    const tickId = setInterval(() => setTick((t) => t + 1), 1000);
+    const onVisible = () => document.visibilityState === "visible" && fetchLive();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(refreshId);
@@ -411,130 +313,157 @@ function useWorldCupLive() {
     };
   }, [fetchLive]);
 
-  return { byPair, knockout, teamHistories, r32Teams, loading, lastUpdated, error, refresh: fetchLive };
+  return { ...state, loading, lastUpdated, error };
 }
 
-const buildActualFromLive = (byPair, teams) => {
-  if (!teams?.length) return {};
-  const actual = {};
-  for (let r = 0; r < ROUNDS.length; r++) {
-    for (let m = 0; m < ROUNDS[r].matches; m++) {
-      const [a, b] = getMatchTeams(r, m, actual, teams);
-      if (!a || !b) continue;
-      const live = getLiveForTeams(byPair, a, b);
-      if (!live?.winner) continue;
-      const wTeam = teamsMatch(live.winner, a.name) ? a : teamsMatch(live.winner, b.name) ? b : null;
-      if (wTeam) actual[key(ROUNDS[r].key, m)] = wTeam.id;
-    }
-  }
-  return actual;
+// ----------------------------------------------------------------------------
+// FORMATTING
+// ----------------------------------------------------------------------------
+const fmtKickoff = (d) =>
+  d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+const fmtTimeOnly = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+const fmtMatchTime = (d) =>
+  d.toDateString() === new Date().toDateString() ? fmtTimeOnly(d) : fmtKickoff(d);
+
+/** Approximate live match minute from kickoff (accounts for HT break). */
+const liveMinute = (kickoff) => {
+  if (!kickoff) return "LIVE";
+  const mins = Math.floor((Date.now() - kickoff.getTime()) / 60_000);
+  if (mins < 0) return "0'";
+  if (mins <= 45) return `${mins}'`;
+  if (mins <= 60) return "HT";
+  if (mins <= 106) return `${Math.min(90, mins - 16)}'`;
+  return "ET";
 };
 
-// Reference bracket outcome (the full projected run from the official bracket).
-// Each value must be a team that actually reaches that match — the set below is
-// self-consistent through to the champion. Edit any line to re-grade instantly.
-const ACTUAL_RESULTS_BY_NAME = {
-  // Round of 32 — LEFT
-  "r32-0": "Germany", "r32-1": "France", "r32-2": "Switzerland", "r32-3": "Netherlands",
-  "r32-4": "Croatia", "r32-5": "Spain", "r32-6": "United States", "r32-7": "Belgium",
-  // Round of 32 — RIGHT
-  "r32-8": "Brazil", "r32-9": "Senegal", "r32-10": "Mexico", "r32-11": "England",
-  "r32-12": "Argentina", "r32-13": "Iran", "r32-14": "Italy", "r32-15": "Portugal",
-  // Round of 16
-  "r16-0": "France", "r16-1": "Netherlands", "r16-2": "Spain", "r16-3": "Belgium",
-  "r16-4": "Brazil", "r16-5": "England", "r16-6": "Argentina", "r16-7": "Portugal",
-  // Quarterfinals
-  "qf-0": "France", "qf-1": "Spain", "qf-2": "England", "qf-3": "Argentina",
-  // Semifinals
-  "sf-0": "Spain", "sf-1": "Argentina",
-  // Final
-  "final-0": "Spain",
+const fmtCountdown = (ms) => {
+  if (ms <= 0) return "now";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 };
 
-const buildActualWinners = (teams) => {
-  const out = {};
-  for (const [k, name] of Object.entries(ACTUAL_RESULTS_BY_NAME)) {
-    const t = teamByName(name, teams);
-    if (t) out[k] = t.id;
-  }
-  return out;
+const phaseLabel = (m) =>
+  m.phase === "pens" ? `PENS ${m.pens[0]}–${m.pens[1]}` : m.phase === "aet" ? "AET" : "FT";
+
+const goalMinuteVal = (g) => {
+  const [base, added] = String(g.minute).split("+");
+  return parseInt(base, 10) * 10 + (added ? Math.min(9, parseInt(added, 10)) : 0);
 };
 
-const STORAGE_KEY = "wc26-bracket-winners-v3";
-const ACCENT = "#52b87a";
-const ACCENT_DIM = "rgba(109, 127, 150, 0.35)";
+const flagSrc = (iso2, w = 80) => `https://flagcdn.com/w${w}/${iso2}.png`;
+const flagSrcSet = (iso2) =>
+  `https://flagcdn.com/w80/${iso2}.png 1x, https://flagcdn.com/w160/${iso2}.png 2x`;
 
 // ----------------------------------------------------------------------------
-// BRACKET LOGIC
+// PREDICTION LOGIC
 // ----------------------------------------------------------------------------
-// Returns the two teams contesting a given match, derived from prior winners.
+const STORAGE_KEY = "wc26-bracket-winners-v4";
+const ACCENT = "#4ade80";
+const ACCENT_DIM = "rgba(100, 118, 140, 0.35)";
+
 function getMatchTeams(roundIdx, matchIdx, winners, teams) {
   if (!teams?.length) return [null, null];
-  if (roundIdx === 0) {
-    return [teams[matchIdx * 2], teams[matchIdx * 2 + 1]];
-  }
+  if (roundIdx === 0) return [teams[matchIdx * 2], teams[matchIdx * 2 + 1]];
   const prev = ROUNDS[roundIdx - 1].key;
-  return [
-    teamById(winners[key(prev, matchIdx * 2)], teams),
-    teamById(winners[key(prev, matchIdx * 2 + 1)], teams),
-  ];
+  const byId = (id) => teams.find((t) => t.id === id) || null;
+  return [byId(winners[key(prev, matchIdx * 2)]), byId(winners[key(prev, matchIdx * 2 + 1)])];
 }
 
-// Cascade-clear any stored winner that is no longer valid for its match.
+/** Predicted third-place fixture = the two semi-final teams the user eliminated. */
+function getThirdPlaceTeams(winners, teams) {
+  return [0, 1].map((i) => {
+    const picked = winners[key("sf", i)];
+    if (!picked) return null;
+    const [a, b] = getMatchTeams(3, i, winners, teams);
+    if (!a || !b) return null;
+    return picked === a.id ? b : a;
+  });
+}
+
+/** Cascade-clear picks that are no longer reachable. */
 function normalize(winners, teams) {
   if (!teams?.length) return winners;
   const w = { ...winners };
   for (let r = 1; r < ROUNDS.length; r++) {
-    const { key: rk, matches } = ROUNDS[r];
-    for (let m = 0; m < matches; m++) {
+    for (let m = 0; m < ROUNDS[r].matches; m++) {
       const [a, b] = getMatchTeams(r, m, w, teams);
-      const cur = w[key(rk, m)];
-      if (cur && cur !== a?.id && cur !== b?.id) delete w[key(rk, m)];
+      const cur = w[key(ROUNDS[r].key, m)];
+      if (cur && cur !== a?.id && cur !== b?.id) delete w[key(ROUNDS[r].key, m)];
     }
   }
+  const [ta, tb] = getThirdPlaceTeams(w, teams);
+  const third = w["third-0"];
+  if (third && third !== ta?.id && third !== tb?.id) delete w["third-0"];
   return w;
 }
 
 function loadStoredWinners() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
   } catch {
     return {};
   }
 }
 
+/** slot key → enriched JSON match. */
+const buildSlotMatches = (byNum) => {
+  const map = {};
+  for (const r of ROUNDS) {
+    r.nums.forEach((num, i) => {
+      const m = byNum.get(num);
+      if (m) map[key(r.key, i)] = m;
+    });
+  }
+  const third = byNum.get(THIRD_PLACE.num);
+  if (third) map["third-0"] = third;
+  return map;
+};
+
+/** slot key → actual winning team id (only for decided matches). */
+const buildActual = (slotMatches) => {
+  const actual = {};
+  for (const [k, m] of Object.entries(slotMatches)) {
+    if (m.winner) actual[k] = m.winner.id;
+  }
+  return actual;
+};
+
 // ----------------------------------------------------------------------------
-// SMALL HOOKS / HELPERS
+// SMALL HOOKS
 // ----------------------------------------------------------------------------
-function useCountUp(target, run, duration = 1100) {
-  const [val, setVal] = useState(0);
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(target);
+  const prevRef = useRef(target);
   useEffect(() => {
-    if (!run) {
-      setVal(0);
-      return;
-    }
+    const from = prevRef.current;
+    prevRef.current = target;
+    if (from === target) return;
     let raf;
     const start = performance.now();
     const tick = (now) => {
       const p = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
-      setVal(Math.round(eased * target));
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(from + (target - from) * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, run, duration]);
+  }, [target, duration]);
   return val;
 }
 
-const flagSrc = (iso2) => `https://flagcdn.com/w80/${iso2}.png`;
-const flagSrcSet = (iso2) =>
-  `https://flagcdn.com/w80/${iso2}.png 1x, https://flagcdn.com/w160/${iso2}.png 2x`;
-
 // ----------------------------------------------------------------------------
-// WC26 LOGO — a self-contained badge mark (trophy + "26").
+// LOGO
 // ----------------------------------------------------------------------------
 function WCLogo({ className = "" }) {
   return (
@@ -545,28 +474,19 @@ function WCLogo({ className = "" }) {
           <stop offset="100%" stopColor="#a67c2e" />
         </linearGradient>
         <linearGradient id="wcInner" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1c2a3d" />
-          <stop offset="100%" stopColor="#111a27" />
+          <stop offset="0%" stopColor="#1a2939" />
+          <stop offset="100%" stopColor="#0d1622" />
         </linearGradient>
       </defs>
       <circle cx="24" cy="24" r="22" fill="none" stroke="url(#wcRing)" strokeWidth="2.5" />
-      <circle cx="24" cy="24" r="18" fill="url(#wcInner)" stroke="rgba(240,235,227,0.08)" strokeWidth="1" />
+      <circle cx="24" cy="24" r="18" fill="url(#wcInner)" stroke="rgba(242,238,230,0.08)" strokeWidth="1" />
       <g fill="#d4a84b">
         <path d="M18 14h12v5.5a6 6 0 0 1-12 0V14Z" />
         <path d="M16.5 15.2h-2.8a2.8 2.8 0 0 0 3.2 3.2l-.4-1.6a1.1 1.1 0 0 1-1.3-1.3h1.3v-.3Zm15 0h2.8a2.8 2.8 0 0 1-3.2 3.2l.4-1.6a1.1 1.1 0 0 0 1.3-1.3h-1.5v-.3Z" />
         <rect x="22.5" y="24.5" width="3" height="3.5" rx="0.5" />
         <rect x="19" y="27.5" width="10" height="2.2" rx="1.1" />
       </g>
-      <text
-        x="24"
-        y="38.5"
-        textAnchor="middle"
-        fontSize="10"
-        fontWeight="400"
-        fill="#f0ebe3"
-        fontFamily="Bebas Neue, sans-serif"
-        letterSpacing="1.5"
-      >
+      <text x="24" y="38.5" textAnchor="middle" fontSize="10" fill="#f2eee6" fontFamily="Bebas Neue, sans-serif" letterSpacing="1.5">
         26
       </text>
     </svg>
@@ -574,19 +494,14 @@ function WCLogo({ className = "" }) {
 }
 
 // ----------------------------------------------------------------------------
-// SVG CONNECTORS — percentage geometry on an 8-row bracket grid; non-scaling stroke
-// keeps line weight constant. Match centers sit at (i + 0.5) / count within each column.
+// CONNECTORS — pairs of matches merge into the next round.
 // ----------------------------------------------------------------------------
-function Connector({ count, side, active }) {
-  // `count` source matches on this side merge into count/2 targets.
+function Connector({ count, side = "left", active }) {
   const paths = [];
   for (let i = 0; i < count; i++) {
     const y1 = i + 0.5;
-    const y2 = i % 2 === 0 ? i + 1 : i; // merged target center (units)
-    const d =
-      side === "left"
-        ? `M0,${y1} H50 V${y2} H100`
-        : `M100,${y1} H50 V${y2} H0`;
+    const y2 = i % 2 === 0 ? i + 1 : i;
+    const d = side === "left" ? `M0,${y1} H50 V${y2} H100` : `M100,${y1} H50 V${y2} H0`;
     paths.push(
       <path
         key={i}
@@ -600,40 +515,21 @@ function Connector({ count, side, active }) {
     );
   }
   return (
-    <div className="shrink-0 self-stretch" style={{ width: 34 }}>
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 100 ${count}`}
-        preserveAspectRatio="none"
-        className="block h-full w-full"
-      >
+    <div className="shrink-0 self-stretch" style={{ width: 28 }}>
+      <svg width="100%" height="100%" viewBox={`0 0 100 ${count}`} preserveAspectRatio="none" className="block h-full w-full">
         {paths}
       </svg>
     </div>
   );
 }
 
-// Final match sits at the vertical center of the bracket; semifinal feeders meet it there.
-const FINAL_PCT = 50;
-
-// Connector from Semifinal (vertical center) to the Final at bracket midpoint.
-function SFFinalConnector({ side, active }) {
-  const d =
-    side === "left"
-      ? `M0,50 H55 V${FINAL_PCT} H100`
-      : `M100,50 H45 V${FINAL_PCT} H0`;
+/** Straight feeder line from each semi-final into the central final. */
+function SFFinalConnector({ active }) {
   return (
-    <div className="shrink-0 self-stretch" style={{ width: 40 }}>
-      <svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="block h-full w-full"
-      >
+    <div className="shrink-0 self-stretch" style={{ width: 32 }}>
+      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-full w-full">
         <path
-          d={d}
+          d="M0,50 H100"
           fill="none"
           strokeWidth={active ? 2 : 1.25}
           stroke={active ? ACCENT : ACCENT_DIM}
@@ -646,468 +542,216 @@ function SFFinalConnector({ side, active }) {
 }
 
 // ----------------------------------------------------------------------------
-// TEAM ROW + MATCH CARD
+// TEAM ROW — [flag] CODE [verdict] [score]
 // ----------------------------------------------------------------------------
-function LiveIndicator() {
-  return (
-    <div className="flex items-center justify-center gap-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.16em] text-[var(--live)]">
-      <span className="relative flex h-1.5 w-1.5">
-        <span className="live-dot absolute inline-flex h-full w-full rounded-full bg-[var(--live)]" />
-      </span>
-      Live
-    </div>
-  );
-}
-
-function TeamHistoryModal({ team, matches, onClose }) {
-  useEffect(() => {
-    if (!team) return;
-    document.body.style.overflow = "hidden";
-    const onKey = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [team, onClose]);
-
-  if (!team) return null;
-
-  const wins = matches.filter((m) => m.goalsFor != null && m.goalsFor > m.goalsAgainst).length;
-  const played = matches.filter((m) => m.goalsFor != null).length;
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        key="history-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--bg-deep)]/85 p-4 backdrop-blur-md"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 8 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="flex max-h-[min(85vh,640px)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5">
-            <img
-              src={flagSrc(team.iso2)}
-              srcSet={flagSrcSet(team.iso2)}
-              alt=""
-              className="h-10 w-14 rounded-sm object-cover shadow-md ring-1 ring-black/40"
-            />
-            <div className="min-w-0 flex-1">
-              <h2 className="font-display truncate text-2xl tracking-wide text-[var(--text-primary)]">
-                {team.name}
-              </h2>
-              <p className="text-[11px] font-medium text-[var(--text-muted)]">
-                {played > 0 ? `${wins}W · ${played} played` : "Tournament results"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3 py-3">
-            {matches.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">No matches found yet.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {matches.map((m, i) => {
-                  const scored = m.goalsFor != null && m.goalsAgainst != null;
-                  const won = scored && m.goalsFor > m.goalsAgainst;
-                  const lost = scored && m.goalsFor < m.goalsAgainst;
-                  const label = m.group || m.round;
-                  return (
-                    <li
-                      key={`${m.date}-${m.opponent}-${i}`}
-                      className={[
-                        "rounded-lg border px-3 py-2.5",
-                        won
-                          ? "border-[color-mix(in_oklch,var(--pitch-glow)_30%,transparent)] bg-[color-mix(in_oklch,var(--pitch)_12%,transparent)]"
-                          : lost
-                          ? "border-[color-mix(in_oklch,var(--live)_20%,transparent)] bg-[color-mix(in_oklch,var(--live)_6%,transparent)]"
-                          : "border-[var(--border)] bg-[var(--bg-elevated)]",
-                      ].join(" ")}
-                    >
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-                          {label}
-                        </span>
-                        {m.kickoff && (
-                          <span className="shrink-0 text-[10px] tabular-nums text-slate-600">
-                            {formatKickoff(m.kickoff)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={flagSrc(m.opponentIso2)}
-                          alt=""
-                          className="h-5 w-7 shrink-0 rounded-[3px] object-cover ring-1 ring-black/30"
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200">
-                          vs {m.opponent}
-                        </span>
-                        {scored ? (
-                          <span
-                            className={[
-                              "shrink-0 rounded-md px-2 py-0.5 text-sm font-extrabold tabular-nums",
-                              won
-                                ? "bg-emerald-500/20 text-emerald-200"
-                                : lost
-                                ? "bg-rose-500/15 text-rose-200"
-                                : "bg-white/5 text-slate-300",
-                            ].join(" ")}
-                          >
-                            {m.goalsFor}–{m.goalsAgainst}
-                          </span>
-                        ) : m.status === "live" ? (
-                          <span className="text-[10px] font-bold uppercase tracking-wide text-rose-300">
-                            Live
-                          </span>
-                        ) : m.kickoff ? (
-                          <span className="text-[11px] font-medium tabular-nums text-slate-400">
-                            {formatMatchTime(m.kickoff)}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-600">TBD</span>
-                        )}
-                      </div>
-                      {m.ground && (
-                        <p className="mt-1 truncate text-[10px] text-slate-600">{m.ground}</p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-}
-
-function TeamRow({
-  team,
-  isWinner,
-  isLoser,
-  onPick,
-  onFlagClick,
-  verdict,
-  align,
-  locked,
-  score,
-  showScoreSlot = true,
-}) {
+function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, score, isMatchWinner, align = "left" }) {
   const empty = !team;
-  const disabled = empty || locked; // can't pick until both teams are set
+  const disabled = empty || locked;
   const right = align === "right";
 
-  let stripClass = "team-strip";
+  let strip = "team-strip";
+  if (right) strip += " team-strip--right";
   let text = "text-[var(--text-secondary)]";
-  if (isWinner) {
-    stripClass += right ? " team-strip--winner team-strip--right" : " team-strip--winner";
-    text = "text-[var(--text-primary)] font-semibold";
-  }
-  if (isLoser) text = "text-[var(--text-muted)]";
   if (verdict === "correct") {
-    stripClass += right ? " team-strip--winner team-strip--right" : " team-strip--winner";
-    text = "text-[var(--pitch-glow)] font-semibold";
+    strip += " team-strip--correct";
+    text = "text-[var(--pitch-glow)] font-bold";
   } else if (verdict === "wrong") {
-    text = "text-[var(--live)] line-through decoration-[var(--live)]/50";
+    strip += " team-strip--wrong";
+    text = "text-[var(--wrong)] line-through decoration-[var(--wrong)]/60";
   } else if (verdict === "missed") {
-    text = "text-[var(--pitch-glow)]/80";
+    text = "text-[var(--pitch-glow)]/85 font-semibold";
+  } else if (isPicked) {
+    strip += " team-strip--winner";
+    text = "text-[var(--text-primary)] font-bold";
+  } else if (isDimmed) {
+    text = "text-[var(--text-muted)]";
   }
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => !disabled && team && onPick(team)}
-      title={locked && !empty ? "Both teams must be decided first" : undefined}
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => !disabled && onPick(team)}
+      onKeyDown={(e) => !disabled && e.key === "Enter" && onPick(team)}
+      title={empty ? undefined : locked ? "Both teams must be decided first" : `Advance ${team.name}`}
       className={[
-        "group/row relative flex w-full items-center rounded-sm transition-all duration-200",
-        "gap-1.5 px-1.5 py-0.5",
+        "group/row relative flex h-[22px] w-full items-center gap-1.5 rounded-sm px-1.5 transition-all duration-200",
         right ? "flex-row-reverse text-right" : "text-left",
-        stripClass,
-        right && isWinner ? "team-strip--right" : "",
-        empty ? "cursor-default" : locked ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-        text,
+        strip,
+        empty ? "cursor-default" : locked ? "cursor-not-allowed opacity-55" : "cursor-pointer",
       ].join(" ")}
     >
       {empty ? (
-        <span className="grid h-5 w-7 shrink-0 place-items-center rounded-sm bg-[var(--bg-elevated)] text-[10px] font-bold text-[var(--text-muted)]">
-          ?
+        <span className="grid h-3.5 w-5.5 shrink-0 place-items-center rounded-[3px] bg-white/[0.06] text-[9px] font-bold text-[var(--text-muted)] ring-1 ring-white/10">
+          ·
         </span>
       ) : (
-        <button
-          type="button"
+        <img
+          src={flagSrc(team.iso2)}
+          srcSet={flagSrcSet(team.iso2)}
+          alt=""
+          width={22}
+          height={14}
+          loading="lazy"
           onClick={(e) => {
             e.stopPropagation();
             onFlagClick?.(team);
           }}
-          title="View match history"
-          className="h-5 w-7 shrink-0 overflow-hidden rounded-sm shadow-sm ring-1 ring-black/40 transition hover:ring-[var(--gold)]/50 hover:brightness-110"
-        >
-          <img
-            src={flagSrc(team.iso2)}
-            srcSet={flagSrcSet(team.iso2)}
-            alt=""
-          width={28}
-          height={20}
-            loading="lazy"
-            className="pointer-events-none h-full w-full rounded-[3px] object-cover"
-          />
-        </button>
+          title={`${team.name} — tournament journey`}
+          className="h-3.5 w-5.5 shrink-0 cursor-pointer rounded-[3px] object-cover shadow-sm ring-1 ring-black/40 transition hover:scale-110 hover:ring-[var(--gold)]/60"
+        />
       )}
 
-      <span
-        className={[
-          "min-w-0 flex-1 truncate font-semibold tracking-tight text-[12px] leading-tight",
-          text,
-        ].join(" ")}
-      >
-        {empty ? <span className="text-[var(--text-muted)]">TBD</span> : team.name}
+      <span className={["min-w-0 flex-1 truncate text-[11.5px] font-bold tracking-wide", text].join(" ")}>
+        {empty ? <span className="font-medium text-[var(--text-muted)]">TBD</span> : team.code}
       </span>
 
-      {/* check / verdict marker */}
-      <span className="flex w-4 shrink-0 items-center justify-center">
+      <span className={["flex w-3 shrink-0 items-center text-[10.5px]", right ? "justify-start" : "justify-end"].join(" ")}>
         {verdict === "correct" ? (
-          <span className="text-[var(--pitch-glow)]">✓</span>
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-[var(--pitch-glow)]">✓</motion.span>
         ) : verdict === "wrong" ? (
-          <span className="text-[var(--live)]">✕</span>
+          <span className="text-[var(--wrong)]">✕</span>
         ) : verdict === "missed" ? (
-          <span className="text-[8px] font-bold uppercase tracking-wide text-[var(--pitch-glow)]/70">won</span>
-        ) : isWinner ? (
-          <motion.span
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-[var(--pitch-glow)]"
-          >
-            ✓
-          </motion.span>
+          <span className="text-[8px] font-black uppercase text-[var(--pitch-glow)]/80">W</span>
+        ) : isPicked ? (
+          <motion.span initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-[var(--pitch-glow)]">✓</motion.span>
         ) : null}
       </span>
 
-      {showScoreSlot && (
-      <span
-        className={[
-          "grid h-5 w-6 shrink-0 place-items-center rounded-sm font-bold tabular-nums",
-          score != null
-            ? isWinner
-              ? "bg-[color-mix(in_oklch,var(--pitch)_25%,transparent)] text-[var(--text-primary)]"
-              : "bg-[var(--bg-deep)] text-[var(--text-secondary)]"
-            : "bg-[var(--bg-deep)] text-[var(--text-muted)]",
-        ].join(" ")}
-      >
-        {score != null ? score : "–"}
-      </span>
-      )}
-    </button>
-  );
-}
-
-function MatchCard({
-  roundIdx,
-  matchIdx,
-  teams,
-  winnerId,
-  onPick,
-  reveal,
-  actualId,
-  align = "left",
-  fluid = false,
-  live,
-  highlight = null,
-  onFlagClick,
-}) {
-  const [a, b] = teams;
-  const decided = !!winnerId;
-  const ready = !!a && !!b; // both teams known → match is pickable
-  const status = resolveLiveStatus(live);
-
-  let scoreA = null;
-  let scoreB = null;
-  if (live && a && b) {
-    if (teamsMatch(a.name, live.t1)) {
-      scoreA = live.score1;
-      scoreB = live.score2;
-    } else if (teamsMatch(a.name, live.t2)) {
-      scoreA = live.score2;
-      scoreB = live.score1;
-    }
-  }
-
-  const showScores = status === "ft" || (status === "live" && hasFinalScore(live));
-  const showTime = status === "scheduled" && live?.kickoff;
-  const showLive = status === "live";
-
-  const verdictFor = (team) => {
-    if (!reveal || !actualId || !team) return undefined;
-    const isUserPick = winnerId === team.id;
-    const isActual = team.id === actualId;
-    if (isUserPick) return isActual ? "correct" : "wrong";
-    // Not the user's pick, but this team actually won → show what was right.
-    if (isActual && winnerId && winnerId !== actualId) return "missed";
-    return undefined;
-  };
-
-  return (
-    <motion.div
-      layout={!fluid}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className={[
-        "relative flex shrink-0 flex-col rounded-xl p-1.5 backdrop-blur-md ring-1",
-        fluid
-          ? "aspect-[8/5] w-full"
-          : "h-[var(--match-card-h)] w-[var(--match-card-w)]",
-        "shadow-[0_8px_28px_-12px_rgba(0,0,0,0.8)]",
-        highlight === "live"
-          ? "bg-rose-500/12 ring-2 ring-rose-400/55 shadow-[0_0_28px_-6px_rgba(244,63,94,0.45)]"
-          : highlight === "next"
-          ? "bg-sky-500/10 ring-2 ring-sky-400/50 shadow-[0_0_24px_-6px_rgba(56,189,248,0.35)]"
-          : "bg-white/[0.04] ring-white/10",
-        decided && highlight !== "live" ? "ring-emerald-400/25" : "",
-      ].join(" ")}
-    >
-      {highlight === "next" && (
-        <div className="mb-0.5 flex justify-center">
-          <span className="rounded-full bg-sky-500 px-2 py-px text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#041018] shadow-md shadow-sky-500/30">
-            Up next
-          </span>
-        </div>
-      )}
-      <div className="flex min-h-0 flex-1 flex-col justify-center gap-0">
-        <TeamRow
-          team={a}
-          isWinner={decided && winnerId === a?.id}
-          isLoser={decided && winnerId !== a?.id && !!a}
-          verdict={verdictFor(a)}
-          onPick={(t) => onPick(roundIdx, matchIdx, t)}
-          onFlagClick={onFlagClick}
-          align={align}
-          locked={!ready}
-          score={showScores ? scoreA : null}
-          showScoreSlot={showScores}
-        />
-        {showTime && (
-          <div className="flex items-center justify-center py-0.5 text-[10px] font-semibold tabular-nums text-slate-400">
-            {formatMatchTime(live.kickoff)}
-          </div>
-        )}
-        {showLive && <LiveIndicator />}
-        <TeamRow
-          team={b}
-          isWinner={decided && winnerId === b?.id}
-          isLoser={decided && winnerId !== b?.id && !!b}
-          verdict={verdictFor(b)}
-          onPick={(t) => onPick(roundIdx, matchIdx, t)}
-          onFlagClick={onFlagClick}
-          align={align}
-          locked={!ready}
-          score={showScores ? scoreB : null}
-          showScoreSlot={showScores}
-        />
-      </div>
-    </motion.div>
-  );
-}
-
-// One vertical column of matches on the shared 8-row bracket grid.
-function RoundColumn({
-  label,
-  roundIdx,
-  indices,
-  winners,
-  teams,
-  onPick,
-  reveal,
-  actual,
-  align,
-  showLabel = true,
-  liveByKey,
-  liveKey,
-  nextKey,
-  onFlagClick,
-}) {
-  return (
-    <div className="flex h-full w-[var(--match-card-w)] shrink-0 flex-col self-stretch">
-      {showLabel && (
-        <div
+      {score != null && (
+        <span
           className={[
-            "mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500",
-            align === "right" ? "text-right" : "text-left",
+            "grid h-4 w-4.5 shrink-0 place-items-center rounded-[4px] text-[10.5px] font-extrabold tabular-nums",
+            isMatchWinner
+              ? "bg-[color-mix(in_oklch,var(--pitch)_35%,transparent)] text-[var(--text-primary)]"
+              : "bg-white/[0.07] text-[var(--text-muted)]",
           ].join(" ")}
         >
-          {label}
-        </div>
+          {score}
+        </span>
       )}
-      <div
-        className="grid h-full min-h-0 flex-1"
-        style={{ gridTemplateRows: `repeat(${BRACKET_ROWS}, minmax(0, 1fr))` }}
-      >
-        {indices.map((m, idx) => {
-          const rk = key(ROUNDS[roundIdx].key, m);
-          const highlight = rk === liveKey ? "live" : rk === nextKey ? "next" : null;
-          const rowsPerMatch = BRACKET_ROWS / indices.length;
-          const rowStart = idx * rowsPerMatch + 1;
-          const rowEnd = rowStart + rowsPerMatch;
-          return (
-            <div
-              key={m}
-              className="flex min-h-0 items-center justify-center overflow-hidden"
-              style={{ gridRow: `${rowStart} / ${rowEnd}` }}
-            >
-              <MatchCard
-                roundIdx={roundIdx}
-                matchIdx={m}
-                teams={getMatchTeams(roundIdx, m, winners, teams)}
-                winnerId={winners[rk]}
-                onPick={onPick}
-                reveal={reveal}
-                actualId={actual[rk]}
-                align={align}
-                live={liveByKey?.[rk]}
-                highlight={highlight}
-                onFlagClick={onFlagClick}
-              />
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
 
 // ----------------------------------------------------------------------------
-// CONFETTI (self-contained)
+// MATCH CARD (bracket)
+// ----------------------------------------------------------------------------
+function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left" }) {
+  const ready = !!a && !!b;
+  const decided = !!winnerId;
+
+  // Attach real scores only when the on-screen pair IS the real fixture.
+  const pairIsReal =
+    match?.team1 && match?.team2 && a && b &&
+    ((match.team1.id === a.id && match.team2.id === b.id) || (match.team1.id === b.id && match.team2.id === a.id));
+
+  let scoreA = null;
+  let scoreB = null;
+  if (pairIsReal && match.score) {
+    const flip = match.team1.id !== a.id;
+    scoreA = flip ? match.score[1] : match.score[0];
+    scoreB = flip ? match.score[0] : match.score[1];
+  }
+
+  const status = match?.status;
+  const graded = !!actualId;
+  const verdictFor = (team) => {
+    if (!graded || !team) return undefined;
+    if (winnerId === team.id) return team.id === actualId ? "correct" : "wrong";
+    if (team.id === actualId && winnerId) return "missed";
+    return undefined;
+  };
+  const actualWinnerIsA = pairIsReal && match.winner && a && match.winner.id === a.id;
+  const actualWinnerIsB = pairIsReal && match.winner && b && match.winner.id === b.id;
+
+  const middle = () => {
+    if (pairIsReal && status === "live")
+      return (
+        <span className="flex items-center gap-1 text-[8.5px] font-black uppercase tracking-[0.14em] text-[var(--live)]">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="live-ping absolute h-full w-full rounded-full bg-[var(--live)]" />
+            <span className="live-dot h-full w-full rounded-full bg-[var(--live)]" />
+          </span>
+          {liveMinute(match.kickoff)}
+        </span>
+      );
+    if (pairIsReal && status === "played")
+      return <span className="text-[8.5px] font-black uppercase tracking-[0.12em] text-[var(--text-muted)]">{phaseLabel(match)}</span>;
+    if (match?.kickoff)
+      return <span className="text-[9px] font-semibold tabular-nums text-[var(--text-muted)]">{fmtMatchTime(match.kickoff)}</span>;
+    return <span className="text-[9px] text-[var(--text-muted)]/60">—</span>;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.25 }}
+      className={[
+        "match-ticket relative flex w-full shrink-0 flex-col justify-center rounded-lg p-[5px]",
+        highlight === "live" ? "match-ticket--live" : highlight === "next" ? "match-ticket--next" : "",
+      ].join(" ")}
+    >
+      <TeamRow
+        team={a}
+        isPicked={decided && winnerId === a?.id}
+        isDimmed={decided && winnerId !== a?.id}
+        verdict={verdictFor(a)}
+        onPick={(t) => onPick(roundIdx, matchIdx, t)}
+        onFlagClick={onFlagClick}
+        locked={!ready}
+        score={scoreA}
+        isMatchWinner={actualWinnerIsA}
+        align={align}
+      />
+
+      <button
+        type="button"
+        onClick={() => onOpenMatch?.(slotKey)}
+        title="Match details"
+        className="mx-1 flex h-[14px] items-center justify-center gap-1 rounded transition hover:bg-white/[0.06]"
+      >
+        {highlight === "next" && (
+          <span className="rounded-full bg-[var(--next)] px-1.5 text-[7px] font-black uppercase tracking-[0.1em] text-[#04121d]">
+            next
+          </span>
+        )}
+        {middle()}
+      </button>
+
+      <TeamRow
+        team={b}
+        isPicked={decided && winnerId === b?.id}
+        isDimmed={decided && winnerId !== b?.id}
+        verdict={verdictFor(b)}
+        onPick={(t) => onPick(roundIdx, matchIdx, t)}
+        onFlagClick={onFlagClick}
+        locked={!ready}
+        score={scoreB}
+        isMatchWinner={actualWinnerIsB}
+        align={align}
+      />
+    </motion.div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// CONFETTI
 // ----------------------------------------------------------------------------
 function Confetti({ fire }) {
   const pieces = useMemo(
     () =>
-      Array.from({ length: 90 }, (_, i) => ({
+      Array.from({ length: 110 }, (_, i) => ({
         id: i,
         x: Math.random() * 100,
-        delay: Math.random() * 0.6,
-        dur: 2.2 + Math.random() * 1.8,
-        rot: Math.random() * 360,
-        size: 6 + Math.random() * 8,
-        color: ["#34d399", "#fbbf24", "#60a5fa", "#f472b6", "#ffffff"][i % 5],
+        delay: Math.random() * 0.7,
+        dur: 2.2 + Math.random() * 2,
+        rot: Math.random() * 720,
+        size: 5 + Math.random() * 8,
+        color: ["#4ade80", "#f5cd6e", "#38bdf8", "#f472b6", "#f2eee6", "#d4a84b"][i % 6],
       })),
     []
   );
@@ -1121,13 +765,7 @@ function Confetti({ fire }) {
               initial={{ y: -40, x: `${p.x}vw`, rotate: 0, opacity: 1 }}
               animate={{ y: "110vh", rotate: p.rot + 540, opacity: [1, 1, 0.9, 0] }}
               transition={{ duration: p.dur, delay: p.delay, ease: "easeIn" }}
-              style={{
-                position: "absolute",
-                width: p.size,
-                height: p.size * 0.6,
-                background: p.color,
-                borderRadius: 2,
-              }}
+              style={{ position: "absolute", width: p.size, height: p.size * 0.6, background: p.color, borderRadius: 2 }}
             />
           ))}
         </div>
@@ -1137,360 +775,886 @@ function Confetti({ fire }) {
 }
 
 // ----------------------------------------------------------------------------
-// CHAMPION / TROPHY CENTER
+// TROPHY / CHAMPION / PODIUM
 // ----------------------------------------------------------------------------
-function ChampionSlot({ champion }) {
-  return (
-    <div className="flex flex-col items-center">
-      <motion.div
-        animate={
-          champion
-            ? { rotate: [0, -6, 6, -3, 0], scale: [1, 1.15, 1] }
-            : { rotate: 0, scale: 1 }
-        }
-        transition={{ duration: 0.9 }}
-        className="text-5xl drop-shadow-[0_0_24px_rgba(251,191,36,0.55)] sm:text-6xl"
-        style={{ filter: champion ? "none" : "grayscale(1) opacity(0.4)" }}
-      >
-        🏆
-      </motion.div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={champion?.id || "empty"}
-          initial={{ opacity: 0, y: 8, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.35 }}
-          className="mt-2 flex flex-col items-center"
-        >
-          {champion ? (
-            <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-gradient-to-b from-amber-300/20 to-amber-500/5 px-5 py-3 ring-1 ring-amber-300/40">
-              <img
-                src={flagSrc(champion.iso2)}
-                srcSet={flagSrcSet(champion.iso2)}
-                alt=""
-                className="h-8 w-12 rounded-[4px] object-cover shadow ring-1 ring-black/40"
-              />
-              <div className="text-center">
-                <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-amber-300/80">
-                  Champion
-                </div>
-                <div className="text-lg font-extrabold tracking-tight text-white">
-                  {champion.name}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center text-[11px] font-medium uppercase tracking-[0.2em] text-slate-600">
-              Awaiting the
-              <br /> final whistle
-            </div>
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// Top-of-bracket champion badge ("WORLD CHAMPION ?" in the poster).
-function ChampionBox({ champion }) {
-  return (
-    <div className="flex flex-col items-center">
-      <div className="mb-1.5 text-[10px] font-extrabold uppercase tracking-[0.26em] text-amber-300/80">
-        World Champion
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={champion?.id || "empty"}
-          initial={{ opacity: 0, scale: 0.9, y: -6 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 6 }}
-          transition={{ duration: 0.35 }}
-        >
-          {champion ? (
-            <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-gradient-to-b from-amber-300/25 to-amber-500/5 px-5 py-3 ring-1 ring-amber-300/50 shadow-[0_0_40px_-8px_rgba(251,191,36,0.5)]">
-              <img
-                src={flagSrc(champion.iso2)}
-                srcSet={flagSrcSet(champion.iso2)}
-                alt=""
-                className="h-9 w-14 rounded-[4px] object-cover shadow ring-1 ring-black/40"
-              />
-              <div className="text-base font-extrabold tracking-tight text-white">
-                {champion.name}
-              </div>
-            </div>
-          ) : (
-            <div className="grid h-16 w-20 place-items-center rounded-2xl bg-white/[0.04] text-3xl font-black text-slate-600 ring-1 ring-white/10">
-              ?
-            </div>
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// Big trophy mark above the Final — gentle float + glow pulse at all times.
 function TrophyMark({ champion }) {
   return (
     <motion.div
-      animate={{ y: [0, -6, 0] }}
+      animate={{ y: [0, -5, 0] }}
       transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut" }}
       className="relative flex flex-col items-center"
     >
       <motion.div
-        className="pointer-events-none absolute -inset-6 rounded-full blur-2xl"
-        animate={{
-          opacity: champion ? [0.35, 0.65, 0.35] : [0.15, 0.3, 0.15],
-          scale: [0.92, 1.08, 0.92],
-        }}
+        className="pointer-events-none absolute -inset-5 rounded-full blur-2xl"
+        animate={{ opacity: champion ? [0.35, 0.65, 0.35] : [0.12, 0.28, 0.12], scale: [0.92, 1.08, 0.92] }}
         transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-        style={{ background: "radial-gradient(circle, rgba(251,191,36,0.45) 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(circle, rgba(245,205,110,0.5) 0%, transparent 70%)" }}
       />
       <motion.div
-        className="relative text-6xl sm:text-7xl"
-        animate={champion ? { scale: [1, 1.05, 1] } : { scale: [1, 1.02, 1] }}
+        className="relative text-5xl"
+        animate={{ scale: champion ? [1, 1.06, 1] : [1, 1.02, 1] }}
         transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
         style={{
           filter: champion
-            ? "drop-shadow(0 0 28px rgba(251,191,36,0.65))"
-            : "grayscale(0.35) drop-shadow(0 0 18px rgba(251,191,36,0.25))",
+            ? "drop-shadow(0 0 26px rgba(245,205,110,0.7))"
+            : "grayscale(0.4) drop-shadow(0 0 14px rgba(245,205,110,0.25))",
         }}
       >
         🏆
       </motion.div>
-      <motion.div
-        className="mt-1 text-[10px] font-black uppercase tracking-[0.3em] text-amber-300/70"
-        animate={{ opacity: [0.55, 0.9, 0.55] }}
-        transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-      >
-        26
-      </motion.div>
     </motion.div>
   );
 }
 
-// Center column: trophy → Final label → match card, all dead-center in the bracket.
-function CenterSpine({ winners, teams, onPick, reveal, actual, champion, liveByKey, liveKey, nextKey, onFlagClick }) {
+function ChampionBox({ champion, isActual }) {
   return (
-    <div
-      className="relative flex h-full shrink-0 items-center justify-center self-stretch"
-      style={{ width: "calc(var(--match-card-w) + 2.5rem)" }}
-    >
+    <AnimatePresence mode="wait">
       <motion.div
-        className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: "easeOut" }}
+        key={champion?.id || "empty"}
+        initial={{ opacity: 0, scale: 0.88, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: -6 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        <TrophyMark champion={champion} />
-
-        <motion.div
-          className="my-2.5 rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-3.5 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.22em] text-[#1a1305] shadow-[0_0_20px_-4px_rgba(251,191,36,0.5)]"
-          animate={{ boxShadow: ["0 0 16px -4px rgba(251,191,36,0.35)", "0 0 24px -2px rgba(251,191,36,0.55)", "0 0 16px -4px rgba(251,191,36,0.35)"] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-        >
-          Final
-        </motion.div>
-
-        <motion.div
-          animate={{ y: [0, -2, 0] }}
-          transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
-        >
-          <MatchCard
-            roundIdx={FINAL_ROUND}
-            matchIdx={0}
-            teams={getMatchTeams(FINAL_ROUND, 0, winners, teams)}
-            winnerId={winners[key("final", 0)]}
-            onPick={onPick}
-            reveal={reveal}
-            actualId={actual[key("final", 0)]}
-            align="left"
-            live={liveByKey?.[key("final", 0)]}
-            highlight={
-              key("final", 0) === liveKey ? "live" : key("final", 0) === nextKey ? "next" : null
-            }
-            onFlagClick={onFlagClick}
-          />
-        </motion.div>
-
-        <AnimatePresence>
-          {champion && (
-            <motion.div
-              key={champion.id}
-              initial={{ opacity: 0, y: 8, scale: 0.92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="mt-3"
-            >
-              <ChampionBox champion={champion} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {champion ? (
+          <div className="flex flex-col items-center gap-1 rounded-xl bg-gradient-to-b from-amber-300/25 to-amber-500/5 px-4 py-2.5 ring-1 ring-amber-300/50 shadow-[0_0_40px_-8px_rgba(245,205,110,0.5)]">
+            <img
+              src={flagSrc(champion.iso2)}
+              srcSet={flagSrcSet(champion.iso2)}
+              alt=""
+              className="h-7 w-11 rounded-[4px] object-cover shadow ring-1 ring-black/40"
+            />
+            <div className="text-center leading-tight">
+              <div className="text-[8px] font-black uppercase tracking-[0.24em] text-amber-300/80">
+                {isActual ? "World Champion" : "Your Champion"}
+              </div>
+              <div className="font-display text-lg tracking-wide text-white">{champion.name}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-[9px] font-bold uppercase tracking-[0.2em] leading-relaxed text-[var(--text-muted)]">
+            pick your
+            <br />
+            champion
+          </div>
+        )}
       </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey }) {
+  const rk = "third-0";
+  const match = slotMatches[rk];
+  // Real fixture teams beat the predicted ones once semis are actually played.
+  const predicted = getThirdPlaceTeams(winners, teams);
+  const a = match?.team1 || predicted[0];
+  const b = match?.team2 || predicted[1];
+
+  return (
+    <div className="flex w-full flex-col items-center gap-1">
+      <span className="text-[8px] font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">
+        🥉 Third place
+      </span>
+      <MatchCard
+        slotKey={rk}
+        roundIdx="third"
+        matchIdx={0}
+        teams={[a, b]}
+        winnerId={winners[rk]}
+        onPick={onPick}
+        actualId={actual[rk]}
+        match={match}
+        highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+        onFlagClick={onFlagClick}
+        onOpenMatch={onOpenMatch}
+      />
+    </div>
+  );
+}
+
+/** Last bracket column: trophy → final → champion → third place. */
+function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch }) {
+  const rk = key("final", 0);
+  return (
+    <div className="flex h-full w-[calc(var(--match-card-w)+1.5rem)] shrink-0 flex-col items-center justify-center gap-2.5 self-stretch px-3">
+      <TrophyMark champion={champion || actualChampion} />
+      <div className="rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-3 py-0.5 text-[8.5px] font-black uppercase tracking-[0.22em] text-[#1a1305] shadow-[0_0_18px_-4px_rgba(245,205,110,0.5)]">
+        Final
+      </div>
+      <div className="w-[var(--match-card-w)]">
+        <MatchCard
+          slotKey={rk}
+          roundIdx={FINAL_ROUND}
+          matchIdx={0}
+          teams={getMatchTeams(FINAL_ROUND, 0, winners, teams)}
+          winnerId={winners[rk]}
+          onPick={onPick}
+          actualId={actual[rk]}
+          match={slotMatches[rk]}
+          highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+          onFlagClick={onFlagClick}
+          onOpenMatch={onOpenMatch}
+        />
+      </div>
+      <ChampionBox champion={actualChampion || champion} isActual={!!actualChampion} />
+      <div className="mt-2 w-[var(--match-card-w)]">
+        <ThirdPlaceCard
+          winners={winners}
+          teams={teams}
+          onPick={onPick}
+          actual={actual}
+          slotMatches={slotMatches}
+          onFlagClick={onFlagClick}
+          onOpenMatch={onOpenMatch}
+          liveKey={liveKey}
+          nextKey={nextKey}
+        />
+      </div>
     </div>
   );
 }
 
 // ----------------------------------------------------------------------------
-// SCOREBOARD
+// MODAL SHELL
 // ----------------------------------------------------------------------------
-function Scoreboard({ stats, onClose }) {
-  const correct = useCountUp(stats.correct, true, 900);
-  const points = useCountUp(stats.points, true, 1100);
-  const pct = stats.total ? Math.round((stats.correct / stats.total) * 100) : 0;
+function Modal({ open, onClose, children, maxW = "max-w-lg" }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -10, height: 0 }}
-      animate={{ opacity: 1, y: 0, height: "auto" }}
-      exit={{ opacity: 0, y: -10, height: 0 }}
-      className="overflow-hidden border-b border-white/10 bg-white/[0.03] backdrop-blur"
-    >
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-3">
-        <Stat label="Correct" value={`${correct}/${stats.total}`} accent="emerald" />
-        <Stat label="Accuracy" value={`${pct}%`} accent="sky" />
-        <Stat label="Points" value={points} accent="amber" />
-        <div className="flex flex-wrap items-center gap-2">
-          {ROUNDS.map((r) => (
-            <span
-              key={r.key}
-              className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-300 ring-1 ring-white/10"
-            >
-              {r.label.replace("Round of ", "R")}{" "}
-              <b className="text-white">
-                {stats.byRound[r.key].correct}/{stats.byRound[r.key].total}
-              </b>
-            </span>
-          ))}
-        </div>
-        <button
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--bg-deep)]/85 p-4 backdrop-blur-md"
           onClick={onClose}
-          className="rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300 ring-1 ring-white/10 transition hover:bg-white/10"
         >
-          Hide
+          <motion.div
+            initial={{ opacity: 0, scale: 0.93, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className={`flex max-h-[min(88vh,720px)] w-full ${maxW} flex-col overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// MATCH DETAIL MODAL — everything the JSON knows about one fixture.
+// ----------------------------------------------------------------------------
+function GoalTimeline({ match }) {
+  const rows = [
+    ...match.goals1.map((g) => ({ ...g, side: 0 })),
+    ...match.goals2.map((g) => ({ ...g, side: 1 })),
+  ].sort((x, y) => goalMinuteVal(x) - goalMinuteVal(y));
+
+  if (!rows.length) return null;
+
+  return (
+    <div className="relative px-4 py-3">
+      <div className="absolute bottom-3 left-1/2 top-3 w-px -translate-x-1/2 bg-[var(--border-strong)]" />
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((g, i) => (
+          <motion.li
+            key={`${g.name}-${g.minute}-${i}`}
+            initial={{ opacity: 0, x: g.side === 0 ? -14 : 14 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.08 + i * 0.05, duration: 0.3 }}
+            className="grid grid-cols-[1fr_auto_1fr] items-center gap-2"
+          >
+            <span className={["truncate text-[12px] font-semibold text-[var(--text-secondary)]", g.side === 0 ? "text-right" : "opacity-0"].join(" ")}>
+              {g.side === 0 && (
+                <>
+                  {g.name}
+                  {g.penalty && <span className="ml-1 text-[9px] font-black text-[var(--gold-bright)]">(P)</span>}
+                  {g.owngoal && <span className="ml-1 text-[9px] font-black text-[var(--wrong)]">(OG)</span>}
+                </>
+              )}
+            </span>
+            <span className="goal-minute z-10 grid min-w-9 place-items-center rounded-full px-1.5 py-0.5 text-[10px] font-extrabold text-[var(--text-primary)]">
+              {g.minute}′
+            </span>
+            <span className={["truncate text-[12px] font-semibold text-[var(--text-secondary)]", g.side === 1 ? "text-left" : "opacity-0"].join(" ")}>
+              {g.side === 1 && (
+                <>
+                  {g.name}
+                  {g.penalty && <span className="ml-1 text-[9px] font-black text-[var(--gold-bright)]">(P)</span>}
+                  {g.owngoal && <span className="ml-1 text-[9px] font-black text-[var(--wrong)]">(OG)</span>}
+                </>
+              )}
+            </span>
+          </motion.li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MatchTeamHeader({ team, refName, won, onFlagClick }) {
+  if (!team)
+    return (
+      <div className="flex flex-1 flex-col items-center gap-1.5">
+        <div className="grid h-10 w-14 place-items-center rounded-md bg-[var(--bg-elevated)] text-sm font-black text-[var(--text-muted)] ring-1 ring-[var(--border)]">
+          ?
+        </div>
+        <span className="text-[11px] font-semibold text-[var(--text-muted)]">
+          {isRef(refName) ? (refName[0] === "W" ? `Winner M${refName.slice(1)}` : `Loser M${refName.slice(1)}`) : "TBD"}
+        </span>
+      </div>
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => onFlagClick?.(team)}
+      className="group flex flex-1 flex-col items-center gap-1.5"
+      title={`${team.name} — tournament journey`}
+    >
+      <img
+        src={flagSrc(team.iso2)}
+        srcSet={flagSrcSet(team.iso2)}
+        alt=""
+        className="h-10 w-14 rounded-md object-cover shadow-lg ring-1 ring-black/40 transition group-hover:scale-105 group-hover:ring-[var(--gold)]/50"
+      />
+      <span className={["text-center text-[13px] font-bold leading-tight", won ? "text-[var(--pitch-glow)]" : "text-[var(--text-primary)]"].join(" ")}>
+        {team.name}
+        {won && " 🏅"}
+      </span>
+    </button>
+  );
+}
+
+function MatchModal({ match, onClose, onFlagClick }) {
+  if (!match) return null;
+  const played = match.status === "played";
+  const live = match.status === "live";
+  const upcoming = match.status === "upcoming";
+
+  return (
+    <Modal open={!!match} onClose={onClose}>
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/30">
+            {match.group || match.roundLabel}
+          </span>
+          {match.num && <span className="text-[10px] font-bold text-[var(--text-muted)]">Match {match.num}</span>}
+        </div>
+        <button type="button" onClick={onClose} className="btn-ghost grid h-7 w-7 place-items-center rounded-lg text-xs" aria-label="Close">
+          ✕
         </button>
       </div>
-    </motion.div>
-  );
-}
 
-function Stat({ label, value, accent }) {
-  const colors = {
-    emerald: "text-emerald-300",
-    sky: "text-sky-300",
-    amber: "text-amber-300",
-  };
-  return (
-    <div className="flex flex-col items-center leading-none">
-      <span className={["text-2xl font-extrabold tabular-nums tracking-tight", colors[accent]].join(" ")}>
-        {value}
-      </span>
-      <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------------------
-// FIT-TO-WIDTH — scales the whole bracket uniformly when the viewport is narrow.
-// ----------------------------------------------------------------------------
-function FitToWidth({ children }) {
-  const outerRef = useRef(null);
-  const innerRef = useRef(null);
-  const [scale, setScale] = useState(1);
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const outer = outerRef.current;
-      const inner = innerRef.current;
-      if (!outer || !inner) return;
-      const widthScale = outer.clientWidth / inner.scrollWidth;
-      const heightScale = outer.clientHeight / inner.scrollHeight;
-      setScale(Math.min(1, widthScale, heightScale));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (outerRef.current) ro.observe(outerRef.current);
-    if (innerRef.current) ro.observe(innerRef.current);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
-
-  return (
-    <div ref={outerRef} className="relative h-full w-full">
-      <div
-        ref={innerRef}
-        className="absolute left-1/2 top-1/2 flex h-full items-stretch"
-        style={{
-          width: "max-content",
-          transform: `translate(-50%, -50%) scale(${scale})`,
-          transformOrigin: "center center",
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------------------
-// MOBILE BRACKET — rounds stacked vertically; full mirrored view kicks in at lg.
-// ----------------------------------------------------------------------------
-function MobileBracket({ winners, teams, onPick, reveal, actual, champion, liveByKey, liveKey, nextKey, onFlagClick }) {
-  return (
-    <div className="flex flex-col gap-6 pb-2">
-      {ROUNDS.map((r, roundIdx) => (
-        <section key={r.key}>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-300 ring-1 ring-white/10">
-              {r.label}
-            </span>
-            <span className="h-px flex-1 bg-gradient-to-r from-white/10 to-transparent" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-              {r.points} pt{r.points > 1 ? "s" : ""}
-            </span>
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {r.key === "final" && (
-              <div className="mb-1 flex flex-col items-center">
-                <TrophyMark champion={champion} />
-              </div>
+      <div className="nice-scroll flex-1 overflow-y-auto">
+        <div className="flex items-start justify-center gap-3 px-4 pb-2 pt-5">
+          <MatchTeamHeader team={match.team1} refName={match.ref1} won={played && match.winnerIdx === 0} onFlagClick={onFlagClick} />
+          <div className="flex w-28 shrink-0 flex-col items-center pt-1">
+            {match.score ? (
+              <motion.div
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="font-display text-4xl tracking-widest text-[var(--text-primary)]"
+              >
+                {match.score[0]}–{match.score[1]}
+              </motion.div>
+            ) : (
+              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">vs</div>
             )}
-            {Array.from({ length: r.matches }, (_, m) => {
-              const rk = key(r.key, m);
-              const highlight = rk === liveKey ? "live" : rk === nextKey ? "next" : null;
+            {live && (
+              <span className="mt-0.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--live)]">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" />
+                {liveMinute(match.kickoff)}
+              </span>
+            )}
+            {played && (
+              <span className="mt-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                {match.phase === "aet" ? "After extra time" : match.phase === "pens" ? "Penalties" : "Full time"}
+              </span>
+            )}
+            {match.pens && (
+              <motion.span
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="mt-1 rounded-full bg-[var(--gold)]/15 px-2.5 py-0.5 text-[11px] font-extrabold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/30"
+              >
+                {match.pens[0]}–{match.pens[1]} pens
+              </motion.span>
+            )}
+            {match.ht && (
+              <span className="mt-1 text-[10px] font-semibold text-[var(--text-muted)]">
+                HT {match.ht[0]}–{match.ht[1]}
+              </span>
+            )}
+            {upcoming && match.kickoff && <Countdown to={match.kickoff} />}
+          </div>
+          <MatchTeamHeader team={match.team2} refName={match.ref2} won={played && match.winnerIdx === 1} onFlagClick={onFlagClick} />
+        </div>
+
+        <GoalTimeline match={match} />
+
+        <div className="mx-4 mb-4 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl bg-[var(--bg-mid)] px-3 py-2.5 text-[11px] font-medium text-[var(--text-muted)] ring-1 ring-[var(--border)]">
+          {match.kickoff && <span>🗓 {fmtKickoff(match.kickoff)}</span>}
+          {match.ground && <span>🏟 {match.ground}</span>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function Countdown({ to }) {
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNow((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="mt-1 rounded-full bg-[var(--next)]/12 px-2.5 py-0.5 text-[11px] font-extrabold tabular-nums text-[var(--next)] ring-1 ring-[var(--next)]/30">
+      ⏱ {fmtCountdown(to.getTime() - Date.now())}
+    </span>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// TEAM JOURNEY MODAL — full tournament run, group stage included.
+// ----------------------------------------------------------------------------
+function TeamModal({ team, journey, onClose, onOpenMatch }) {
+  if (!team) return null;
+  const playedGames = journey.filter((m) => m.gf != null);
+  const wins = playedGames.filter((m) => (m.winner ? m.winner.id === team.id : false)).length;
+  const draws = playedGames.filter((m) => m.gf === m.ga && !m.pens).length;
+  const losses = playedGames.length - wins - draws;
+  const gf = playedGames.reduce((s, m) => s + m.gf, 0);
+  const ga = playedGames.reduce((s, m) => s + m.ga, 0);
+
+  return (
+    <Modal open={!!team} onClose={onClose}>
+      <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5">
+        <img
+          src={flagSrc(team.iso2)}
+          srcSet={flagSrcSet(team.iso2)}
+          alt=""
+          className="h-10 w-14 rounded-md object-cover shadow-md ring-1 ring-black/40"
+        />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display truncate text-2xl tracking-wide text-[var(--text-primary)]">
+            {team.name} <span className="text-[var(--text-muted)]">· {team.code}</span>
+          </h2>
+          {playedGames.length > 0 && (
+            <p className="text-[11px] font-semibold text-[var(--text-muted)]">
+              <span className="text-[var(--pitch-glow)]">{wins}W</span> · {draws}D ·{" "}
+              <span className="text-[var(--wrong)]">{losses}L</span> · {gf} scored / {ga} conceded
+            </p>
+          )}
+        </div>
+        <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm" aria-label="Close">
+          ✕
+        </button>
+      </div>
+
+      <div className="nice-scroll flex-1 overflow-y-auto px-3 py-3">
+        {journey.length === 0 ? (
+          <p className="py-8 text-center text-sm text-[var(--text-muted)]">No matches found.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {journey.map((m, i) => {
+              const scored = m.gf != null;
+              const wonPens = m.pens && m.winner?.id === team.id;
+              const lostPens = m.pens && m.winner && m.winner.id !== team.id;
+              const won = scored && (m.gf > m.ga || wonPens);
+              const lost = scored && (m.gf < m.ga || lostPens);
+              const ourScorers = (m.ourGoals || [])
+                .map((g) => `${g.name} ${g.minute}′${g.penalty ? " (P)" : ""}${g.owngoal ? " (OG)" : ""}`)
+                .join(" · ");
               return (
-                <MatchCard
-                  key={m}
-                  roundIdx={roundIdx}
-                  matchIdx={m}
-                  teams={getMatchTeams(roundIdx, m, winners, teams)}
-                  winnerId={winners[rk]}
-                  onPick={onPick}
-                  reveal={reveal}
-                  actualId={actual[rk]}
-                  align="left"
-                  fluid
-                  live={liveByKey?.[rk]}
-                  highlight={highlight}
-                  onFlagClick={onFlagClick}
-                />
+                <motion.li
+                  key={`${m.date}-${m.them?.code}-${i}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.25 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenMatch?.(m)}
+                    className={[
+                      "w-full rounded-lg border px-3 py-2.5 text-left transition hover:brightness-110",
+                      won
+                        ? "border-[color-mix(in_oklch,var(--pitch-glow)_30%,transparent)] bg-[color-mix(in_oklch,var(--pitch)_12%,transparent)]"
+                        : lost
+                        ? "border-[color-mix(in_oklch,var(--wrong)_22%,transparent)] bg-[color-mix(in_oklch,var(--wrong)_6%,transparent)]"
+                        : "border-[var(--border)] bg-[var(--bg-elevated)]",
+                    ].join(" ")}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[9.5px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        {m.group || m.roundLabel}
+                      </span>
+                      {m.kickoff && (
+                        <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]/70">{fmtKickoff(m.kickoff)}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <img src={flagSrc(m.them.iso2)} alt="" className="h-4.5 w-6.5 shrink-0 rounded-[3px] object-cover ring-1 ring-black/30" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-secondary)]">
+                        vs {m.them.name}
+                      </span>
+                      {scored ? (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {m.pens && (
+                            <span className="text-[9.5px] font-bold text-[var(--gold-bright)]">
+                              {wonPens ? "won" : "lost"} pens
+                            </span>
+                          )}
+                          <span
+                            className={[
+                              "rounded-md px-2 py-0.5 text-sm font-extrabold tabular-nums",
+                              won ? "bg-emerald-500/20 text-emerald-200" : lost ? "bg-rose-500/15 text-rose-200" : "bg-white/5 text-[var(--text-secondary)]",
+                            ].join(" ")}
+                          >
+                            {m.gf}–{m.ga}
+                          </span>
+                        </span>
+                      ) : m.status === "live" ? (
+                        <span className="flex items-center gap-1 text-[10px] font-black uppercase text-[var(--live)]">
+                          <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" /> live
+                        </span>
+                      ) : m.kickoff ? (
+                        <span className="text-[11px] font-semibold tabular-nums text-[var(--text-muted)]">{fmtMatchTime(m.kickoff)}</span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-muted)]/60">TBD</span>
+                      )}
+                    </div>
+                    {ourScorers && (
+                      <p className="mt-1 truncate text-[10.5px] text-[var(--text-muted)]">⚽ {ourScorers}</p>
+                    )}
+                    {m.ground && <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]/60">🏟 {m.ground}</p>}
+                  </button>
+                </motion.li>
               );
             })}
-          </div>
-        </section>
-      ))}
-      <div className="mt-1 rounded-2xl bg-white/[0.03] p-4 ring-1 ring-white/10">
-        <ChampionSlot champion={champion} />
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// GAMES RAIL — every knockout fixture, linear & chronological, up top.
+// ----------------------------------------------------------------------------
+function RailTeamRow({ team, refName, score, isWinner }) {
+  return (
+    <div className="grid h-[20px] grid-cols-[22px_1fr_auto] items-center gap-1.5">
+      {team ? (
+        <img src={flagSrc(team.iso2, 40)} alt="" className="h-3.5 w-[22px] rounded-[3px] object-cover ring-1 ring-black/30" />
+      ) : (
+        <span className="grid h-3.5 w-[22px] place-items-center rounded-[3px] bg-white/[0.06] text-[8px] font-bold text-[var(--text-muted)] ring-1 ring-white/10">·</span>
+      )}
+      <span
+        className={[
+          "truncate text-[11.5px] font-bold tracking-wide",
+          isWinner ? "text-[var(--pitch-glow)]" : team ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]",
+        ].join(" ")}
+      >
+        {team ? team.code : isRef(refName) ? `${refName[0] === "W" ? "W" : "L"}·M${refName.slice(1)}` : "TBD"}
+      </span>
+      <span
+        className={[
+          "w-4 text-right text-[12px] font-extrabold tabular-nums",
+          isWinner ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]",
+        ].join(" ")}
+      >
+        {score != null ? score : ""}
+      </span>
+    </div>
+  );
+}
+
+function RailCard({ match, isLive, isNext, onClick, index }) {
+  const footer = () => {
+    if (isLive)
+      return (
+        <span className="flex items-center gap-1 text-[8.5px] font-black uppercase tracking-[0.14em] text-[var(--live)]">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="live-ping absolute h-full w-full rounded-full bg-[var(--live)]" />
+            <span className="live-dot h-full w-full rounded-full bg-[var(--live)]" />
+          </span>
+          Live {liveMinute(match.kickoff)}
+        </span>
+      );
+    if (match.status === "played")
+      return (
+        <span className="text-[8.5px] font-black uppercase tracking-[0.12em] text-[var(--text-muted)]">
+          {phaseLabel(match)}
+        </span>
+      );
+    if (isNext && match.kickoff)
+      return (
+        <span className="text-[8.5px] font-black uppercase tracking-[0.1em] text-[var(--next)]">
+          in {fmtCountdown(match.kickoff.getTime() - Date.now())}
+        </span>
+      );
+    return (
+      <span className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+        {match.kickoff ? fmtTimeOnly(match.kickoff) : "TBD"}
+      </span>
+    );
+  };
+
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index * 0.03, 0.5), duration: 0.3 }}
+      whileTap={{ scale: 0.96 }}
+      className={[
+        "rail-card flex w-[9.5rem] shrink-0 snap-start flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left",
+        isLive ? "rail-card--live" : isNext ? "rail-card--next" : "",
+      ].join(" ")}
+    >
+      <div className="mb-0.5 flex items-center justify-between">
+        <span
+          className={[
+            "text-[8px] font-black uppercase tracking-[0.16em]",
+            isLive ? "text-[var(--live)]" : isNext ? "text-[var(--next)]" : "text-[var(--gold-bright)]/70",
+          ].join(" ")}
+        >
+          {ROUND_SHORT[match.round] || match.roundLabel}
+        </span>
+        {footer()}
+      </div>
+      <RailTeamRow team={match.team1} refName={match.ref1} score={match.score?.[0]} isWinner={match.winnerIdx === 0} />
+      <RailTeamRow team={match.team2} refName={match.ref2} score={match.score?.[1]} isWinner={match.winnerIdx === 1} />
+      {match.pens && (
+        <span className="mt-0.5 text-[8.5px] font-bold text-[var(--gold-bright)]">
+          pens {match.pens[0]}–{match.pens[1]}
+        </span>
+      )}
+    </motion.button>
+  );
+}
+
+function GamesRail({ matches, liveNums, nextNum, onOpenMatch }) {
+  const scrollRef = useRef(null);
+  const anchorRef = useRef(null);
+  const anchored = useRef(false);
+
+  useEffect(() => {
+    if (anchored.current || !anchorRef.current || !scrollRef.current) return;
+    const el = anchorRef.current;
+    scrollRef.current.scrollLeft = el.offsetLeft - scrollRef.current.clientWidth / 2 + el.clientWidth / 2;
+    anchored.current = true;
+  }, [matches]);
+
+  const anchorNum = liveNums[0] ?? nextNum;
+  let lastDate = null;
+
+  return (
+    <div className="border-b border-[var(--border)] bg-[var(--bg-mid)]/55">
+      <div
+        ref={scrollRef}
+        className="ticker-scroll edge-fade-x mx-auto flex max-w-[1900px] snap-x items-stretch gap-2 overflow-x-auto px-5 py-2.5"
+      >
+        {matches.map((m, i) => {
+          const dayChip =
+            m.date !== lastDate && m.kickoff ? (
+              <div key={`day-${m.date}`} className="flex shrink-0 flex-col items-center justify-center px-1">
+                <span className="[writing-mode:vertical-rl] rotate-180 text-[8px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]/70">
+                  {fmtDay(m.kickoff)}
+                </span>
+              </div>
+            ) : null;
+          lastDate = m.date;
+          return (
+            <React.Fragment key={m.num}>
+              {dayChip}
+              <div ref={m.num === anchorNum ? anchorRef : undefined} className="flex">
+                <RailCard
+                  match={m}
+                  index={i}
+                  isLive={liveNums.includes(m.num)}
+                  isNext={m.num === nextNum}
+                  onClick={() => onOpenMatch(m)}
+                />
+              </div>
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// SCORE HUD — prediction points, always visible in the header.
+// ----------------------------------------------------------------------------
+function ScoreHUD({ stats }) {
+  const points = useCountUp(stats.points);
+  const pct = stats.total ? Math.round((stats.correct / stats.total) * 100) : null;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 rounded-full bg-[var(--gold)]/12 px-3 py-1 ring-1 ring-[var(--gold)]/30">
+        <span className="text-[9px] font-black uppercase tracking-[0.14em] text-[var(--gold-bright)]/80">pts</span>
+        <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{points}</span>
+      </div>
+      {pct != null && (
+        <div
+          className="hidden items-center gap-1.5 rounded-full bg-white/[0.04] px-3 py-1 ring-1 ring-[var(--border)] sm:flex"
+          title={`${stats.correct} of ${stats.total} graded picks correct`}
+        >
+          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">acc</span>
+          <span className={["font-display text-lg leading-none tracking-wider", pct >= 60 ? "text-[var(--pitch-glow)]" : "text-[var(--text-secondary)]"].join(" ")}>
+            {pct}%
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// ROUND NAV — jump pills for the scrollable bracket.
+// ----------------------------------------------------------------------------
+function RoundNav({ activeRound, onJump, stats, liveRoundKey }) {
+  return (
+    <div className="mx-auto flex max-w-[1900px] flex-wrap items-center gap-1.5 px-4 py-2">
+      {ROUNDS.map((r) => {
+        const s = stats.byRound[r.key];
+        return (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => onJump(r.key)}
+            className={[
+              "round-pill flex items-center gap-1.5 rounded-full px-3 py-1 text-[10.5px] font-bold text-[var(--text-secondary)]",
+              activeRound === r.key ? "round-pill--active" : "",
+            ].join(" ")}
+          >
+            {liveRoundKey === r.key && <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" />}
+            {r.label}
+            <span className="text-[9px] font-black text-[var(--text-muted)]">{r.points}pt</span>
+            {s?.total > 0 && (
+              <span className={["text-[9px] font-black", s.correct === s.total ? "text-[var(--pitch-glow)]" : "text-[var(--text-muted)]"].join(" ")}>
+                {s.correct}/{s.total}✓
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// LOADING SKELETON
+// ----------------------------------------------------------------------------
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-[70vh] flex-col items-center gap-8 px-6 pt-6">
+      <div className="ticker-scroll edge-fade-x flex w-full max-w-4xl gap-2 overflow-hidden">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="skeleton h-16 w-[9.5rem] shrink-0 rounded-xl" style={{ animationDelay: `${i * 0.08}s` }} />
+        ))}
+      </div>
+      <div className="flex flex-col items-center gap-3 pt-10">
+        <div className="relative flex flex-col items-center">
+          <span className="ball-bounce text-4xl">⚽</span>
+          <span className="ball-shadow mt-1 h-1.5 w-8 rounded-full bg-black/60 blur-[2px]" />
+        </div>
+        <motion.p
+          animate={{ opacity: [0.45, 1, 0.45] }}
+          transition={{ duration: 1.6, repeat: Infinity }}
+          className="text-[11px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)]"
+        >
+          Loading tournament
+        </motion.p>
+      </div>
+      <div className="hidden w-full max-w-4xl items-center justify-center gap-4 lg:flex">
+        {[8, 4, 2, 1].map((n, ci) => (
+          <div key={ci} className="flex flex-1 flex-col justify-center gap-2" style={{ maxWidth: 130 }}>
+            {Array.from({ length: n }, (_, i) => (
+              <div key={i} className="skeleton h-10 rounded-lg" style={{ animationDelay: `${(ci * 0.1 + i * 0.05).toFixed(2)}s` }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// SCROLLABLE BRACKET — left→right, all rounds, horizontal scroll.
+// ----------------------------------------------------------------------------
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef }) {
+  const round = ROUNDS[roundIdx];
+  const rowsPerMatch = BRACKET_ROWS / indices.length;
+  return (
+    <div ref={colRef} className="flex h-full w-[var(--match-card-w)] shrink-0 flex-col self-stretch">
+      <div
+        className="grid h-full min-h-0 flex-1"
+        style={{ gridTemplateRows: `repeat(${BRACKET_ROWS}, var(--bracket-row))` }}
+      >
+        {indices.map((m, idx) => {
+          const rk = key(round.key, m);
+          const rowStart = idx * rowsPerMatch + 1;
+          return (
+            <div key={m} className="flex min-h-0 items-center" style={{ gridRow: `${rowStart} / ${rowStart + rowsPerMatch}` }}>
+              <MatchCard
+                slotKey={rk}
+                roundIdx={roundIdx}
+                matchIdx={m}
+                teams={getMatchTeams(roundIdx, m, winners, teams)}
+                winnerId={winners[rk]}
+                onPick={onPick}
+                actualId={actual[rk]}
+                match={slotMatches[rk]}
+                align={align}
+                highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+                onFlagClick={onFlagClick}
+                onOpenMatch={onOpenMatch}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, stats, liveRoundKey }) {
+  const scrollRef = useRef(null);
+  const colRefs = useRef({}); // roundKey → [leftCol, rightCol?]
+  const [activeRound, setActiveRound] = useState("r32");
+  const centered = useRef(false);
+
+  const setColRef = (roundKey, side) => (el) => {
+    if (!colRefs.current[roundKey]) colRefs.current[roundKey] = {};
+    colRefs.current[roundKey][side] = el;
+  };
+
+  const centerOn = useCallback((el, smooth = true) => {
+    const container = scrollRef.current;
+    if (!el || !container) return;
+    container.scrollTo({
+      left: el.offsetLeft - (container.clientWidth - el.clientWidth) / 2,
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }, []);
+
+  const jumpTo = useCallback(
+    (roundKey) => {
+      const cols = colRefs.current[roundKey] || {};
+      const container = scrollRef.current;
+      if (!container) return;
+      setActiveRound(roundKey);
+      // Jump to whichever side of the tree is closer to the current view.
+      const mid = container.scrollLeft + container.clientWidth / 2;
+      const target =
+        cols.right && cols.left
+          ? Math.abs(cols.left.offsetLeft - mid) <= Math.abs(cols.right.offsetLeft - mid)
+            ? cols.left
+            : cols.right
+          : cols.left || cols.right;
+      centerOn(target);
+    },
+    [centerOn]
+  );
+
+  // Track which round is nearest the viewport center while scrolling.
+  const onScroll = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const mid = container.scrollLeft + container.clientWidth / 2;
+    let best = "r32";
+    let bestDist = Infinity;
+    for (const [roundKey, cols] of Object.entries(colRefs.current)) {
+      for (const el of Object.values(cols)) {
+        if (!el) continue;
+        const d = Math.abs(el.offsetLeft + el.clientWidth / 2 - mid);
+        if (d < bestDist) {
+          bestDist = d;
+          best = roundKey;
+        }
+      }
+    }
+    setActiveRound(best);
+  }, []);
+
+  // Open centered on the final so both halves of the tree are visible.
+  useEffect(() => {
+    if (centered.current) return;
+    const el = colRefs.current.final?.left;
+    if (el) {
+      centerOn(el, false);
+      centered.current = true;
+    }
+  });
+
+  // Connector activity per side: left = first half of the round, right = second.
+  const activeFor = (roundIdx, side) => {
+    const half = ROUNDS[roundIdx].matches / 2;
+    const base = side === "left" ? 0 : half;
+    return Array.from({ length: half }, (_, i) => !!winners[key(ROUNDS[roundIdx].key, base + i)]);
+  };
+  const sideIdx = (roundIdx, side) => {
+    const half = ROUNDS[roundIdx].matches / 2;
+    const base = side === "left" ? 0 : half;
+    return Array.from({ length: half }, (_, i) => base + i);
+  };
+
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch };
+
+  return (
+    <>
+      <RoundNav activeRound={activeRound} onJump={jumpTo} stats={stats} liveRoundKey={liveRoundKey} />
+      <div ref={scrollRef} onScroll={onScroll} className="nice-scroll overflow-x-auto pb-4">
+        <div className="mx-auto flex w-max items-stretch gap-0 px-4" style={{ height: `calc(${BRACKET_ROWS} * var(--bracket-row))` }}>
+          {/* LEFT half of the tree */}
+          <BracketColumn roundIdx={0} indices={sideIdx(0, "left")} align="left" colRef={setColRef("r32", "left")} {...shared} />
+          <Connector count={8} side="left" active={activeFor(0, "left")} />
+          <BracketColumn roundIdx={1} indices={sideIdx(1, "left")} align="left" colRef={setColRef("r16", "left")} {...shared} />
+          <Connector count={4} side="left" active={activeFor(1, "left")} />
+          <BracketColumn roundIdx={2} indices={sideIdx(2, "left")} align="left" colRef={setColRef("qf", "left")} {...shared} />
+          <Connector count={2} side="left" active={activeFor(2, "left")} />
+          <BracketColumn roundIdx={3} indices={sideIdx(3, "left")} align="left" colRef={setColRef("sf", "left")} {...shared} />
+          <SFFinalConnector active={!!winners[key("sf", 0)]} />
+
+          {/* CENTER — trophy, final, champion, third place */}
+          <div ref={setColRef("final", "left")} className="flex h-full items-stretch">
+            <PodiumColumn {...shared} champion={champion} actualChampion={actualChampion} />
+          </div>
+
+          {/* RIGHT half of the tree (mirrored) */}
+          <SFFinalConnector active={!!winners[key("sf", 1)]} />
+          <BracketColumn roundIdx={3} indices={sideIdx(3, "right")} align="right" colRef={setColRef("sf", "right")} {...shared} />
+          <Connector count={2} side="right" active={activeFor(2, "right")} />
+          <BracketColumn roundIdx={2} indices={sideIdx(2, "right")} align="right" colRef={setColRef("qf", "right")} {...shared} />
+          <Connector count={4} side="right" active={activeFor(1, "right")} />
+          <BracketColumn roundIdx={1} indices={sideIdx(1, "right")} align="right" colRef={setColRef("r16", "right")} {...shared} />
+          <Connector count={8} side="right" active={activeFor(0, "right")} />
+          <BracketColumn roundIdx={0} indices={sideIdx(0, "right")} align="right" colRef={setColRef("r32", "right")} {...shared} />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1499,49 +1663,44 @@ function MobileBracket({ winners, teams, onPick, reveal, actual, champion, liveB
 // ----------------------------------------------------------------------------
 export default function App() {
   const [winners, setWinners] = useState(loadStoredWinners);
-  const [reveal, setReveal] = useState(false);
-  const [actual, setActual] = useState({});
-  const [loadingResults, setLoadingResults] = useState(false);
-  const [resultSource, setResultSource] = useState(null); // "live" | "local"
   const [confetti, setConfetti] = useState(false);
-  const [historyTeam, setHistoryTeam] = useState(null);
+  const [teamModal, setTeamModal] = useState(null);
+  const [matchModal, setMatchModal] = useState(null);
   const prevChampRef = useRef(null);
-  const { byPair, knockout, teamHistories, r32Teams, loading: liveLoading, lastUpdated, error: liveError, refresh: refreshLive } =
-    useWorldCupLive();
+  const { matches, byNum, r32Teams, journeys, loading, lastUpdated, error } = useWorldCup();
 
-  const teams = useMemo(() => r32Teams ?? [], [r32Teams]);
-  const onFlagClick = useCallback((team) => setHistoryTeam(team), []);
-  const historyMatches = useMemo(() => {
-    if (!historyTeam) return [];
-    return teamHistories.get(normTeam(historyTeam.name)) ?? [];
-  }, [historyTeam, teamHistories]);
+  const teams = r32Teams ?? [];
+  const slotMatches = useMemo(() => buildSlotMatches(byNum), [byNum]);
+  const actual = useMemo(() => buildActual(slotMatches), [slotMatches]);
 
-  // Re-validate stored picks once R32 teams load from JSON.
-  useEffect(() => {
-    if (teams.length === 32) {
-      setWinners((w) => normalize(w, teams));
-    }
-  }, [teams]);
-
-  const liveByKey = useMemo(() => {
-    if (!teams.length) return {};
-    const map = {};
-    for (let r = 0; r < ROUNDS.length; r++) {
-      for (let m = 0; m < ROUNDS[r].matches; m++) {
-        const [a, b] = getMatchTeams(r, m, winners, teams);
-        const live = getLiveForTeams(byPair, a, b);
-        if (live) map[key(ROUNDS[r].key, m)] = live;
-      }
-    }
-    return map;
-  }, [byPair, winners, teams]);
-
-  const { liveKey, nextKey } = useMemo(
-    () => computeMatchHighlights(knockout, liveByKey),
-    [knockout, liveByKey]
+  const knockouts = useMemo(
+    () =>
+      matches
+        .filter((m) => m.isKnockout)
+        .sort((x, y) => (x.kickoff?.getTime() ?? 0) - (y.kickoff?.getTime() ?? 0)),
+    [matches]
   );
 
-  // Persist on every change.
+  const liveNums = useMemo(() => knockouts.filter((m) => m.status === "live").map((m) => m.num), [knockouts]);
+  const nextMatch = useMemo(() => {
+    const now = Date.now();
+    return knockouts.find((m) => m.status === "upcoming" && m.kickoff && m.kickoff.getTime() > now) || null;
+  }, [knockouts]);
+
+  const numToSlot = useMemo(() => {
+    const map = new Map();
+    for (const [k, m] of Object.entries(slotMatches)) map.set(m.num, k);
+    return map;
+  }, [slotMatches]);
+  const liveKey = liveNums.length ? numToSlot.get(liveNums[0]) : null;
+  const nextKey = nextMatch ? numToSlot.get(nextMatch.num) : null;
+  const liveRoundKey = liveKey ? liveKey.split("-")[0] : null;
+
+  // Re-validate stored picks once bracket seeds load.
+  useEffect(() => {
+    if (teams.length === 32) setWinners((w) => normalize(w, teams));
+  }, [teams.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(winners));
@@ -1550,9 +1709,9 @@ export default function App() {
     }
   }, [winners]);
 
-  const champion = teamById(winners[key("final", 0)], teams);
+  const champion = teams.find((t) => t.id === winners[key("final", 0)]) || null;
+  const actualChampion = slotMatches[key("final", 0)]?.winner || null;
 
-  // Champion reveal → confetti flourish (only when it newly changes).
   useEffect(() => {
     const id = champion?.id || null;
     if (id && id !== prevChampRef.current) {
@@ -1564,23 +1723,13 @@ export default function App() {
     if (!id) prevChampRef.current = null;
   }, [champion]);
 
-  // Keep reveal grading in sync as live scores update.
-  useEffect(() => {
-    if (!reveal || !byPair.size || !teams.length) return;
-    const resolved = buildActualFromLive(byPair, teams);
-    if (Object.keys(resolved).length) setActual(resolved);
-  }, [reveal, byPair, teams]);
-
   const onPick = useCallback(
     (roundIdx, matchIdx, team) => {
+      const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
       setWinners((prev) => {
-        const k = key(ROUNDS[roundIdx].key, matchIdx);
         const next = { ...prev };
-        if (next[k] === team.id) {
-          delete next[k];
-        } else {
-          next[k] = team.id;
-        }
+        if (next[rk] === team.id) delete next[rk];
+        else next[rk] = team.id;
         return normalize(next, teams);
       });
     },
@@ -1589,9 +1738,6 @@ export default function App() {
 
   const resetBracket = useCallback(() => {
     setWinners({});
-    setReveal(false);
-    setActual({});
-    setResultSource(null);
     prevChampRef.current = null;
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -1600,44 +1746,34 @@ export default function App() {
     }
   }, []);
 
-  // Fetch latest scores, then reveal against live results (fallback to local projection).
-  const revealResults = useCallback(async () => {
-    if (reveal) {
-      setReveal(false);
-      return;
-    }
-    setLoadingResults(true);
-    const fresh = await refreshLive();
-    const pair = fresh?.byPair || byPair;
-    const t = fresh?.r32Teams || teams;
-    let resolved = buildActualFromLive(pair, t);
-    let source = "live";
-    if (!Object.keys(resolved).length) {
-      resolved = buildActualWinners(t);
-      source = "local";
-    }
-    setActual(resolved);
-    setResultSource(source);
-    setReveal(true);
-    setLoadingResults(false);
-  }, [reveal, byPair, teams, refreshLive]);
+  const onFlagClick = useCallback((team) => setTeamModal(team), []);
+  const openMatchBySlot = useCallback(
+    (slotKey) => {
+      const m = slotMatches[slotKey];
+      if (m) setMatchModal(m);
+    },
+    [slotMatches]
+  );
+  const openMatchFromTeam = useCallback((m) => {
+    setTeamModal(null);
+    setMatchModal(m);
+  }, []);
 
-  // Scoring (only counts matches the user predicted AND that have a result).
+  // Grade picks against real results as they land.
   const stats = useMemo(() => {
     const byRound = {};
     let correct = 0,
       total = 0,
       points = 0;
-    for (const r of ROUNDS) {
+    for (const r of [...ROUNDS, THIRD_PLACE]) {
       byRound[r.key] = { correct: 0, total: 0 };
-      for (let m = 0; m < r.matches; m++) {
+      const count = r.matches ?? 1;
+      for (let m = 0; m < count; m++) {
         const k = key(r.key, m);
-        const actualWinner = actual[k];
-        const userWinner = winners[k];
-        if (!actualWinner || !userWinner) continue;
+        if (!actual[k] || !winners[k]) continue;
         byRound[r.key].total++;
         total++;
-        if (actualWinner === userWinner) {
+        if (actual[k] === winners[k]) {
           byRound[r.key].correct++;
           correct++;
           points += r.points;
@@ -1647,176 +1783,96 @@ export default function App() {
     return { correct, total, points, byRound };
   }, [winners, actual]);
 
-  // Which connector lines are "active" (feeder match decided), per side.
-  const activeFor = useCallback(
-    (roundIdx, side) => {
-      const rk = ROUNDS[roundIdx].key;
-      const half = ROUNDS[roundIdx].matches / 2;
-      const base = side === "left" ? 0 : half;
-      return Array.from({ length: half }, (_, i) => !!winners[key(rk, base + i)]);
-    },
-    [winners]
-  );
-
-  // Index ranges per side for each round.
-  const sideIdx = (roundIdx, side) => {
-    const half = ROUNDS[roundIdx].matches / 2;
-    const base = side === "left" ? 0 : half;
-    return Array.from({ length: half }, (_, i) => base + i);
-  };
-
-  const sfLeftDecided = !!winners[key("sf", 0)];
-  const sfRightDecided = !!winners[key("sf", 1)];
+  const bracketProps = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch: openMatchBySlot };
+  const showBracket = teams.length === 32;
 
   return (
-    <div className="min-h-full bg-[radial-gradient(120%_120%_at_50%_-10%,#0b1437_0%,#070a1f_45%,#04050f_100%)] text-slate-100">
+    <div className="app-shell text-[var(--text-primary)]">
       <Confetti fire={confetti} />
-      <TeamHistoryModal
-        team={historyTeam}
-        matches={historyMatches}
-        onClose={() => setHistoryTeam(null)}
+      <TeamModal
+        team={teamModal}
+        journey={teamModal ? journeys.get(teamModal.code) ?? [] : []}
+        onClose={() => setTeamModal(null)}
+        onOpenMatch={openMatchFromTeam}
       />
+      <MatchModal match={matchModal} onClose={() => setMatchModal(null)} onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }} />
 
-      {/* TOP BAR */}
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070a1f]/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
+      {/* HEADER */}
+      <header className="broadcast-bar sticky top-0 z-40">
+        <div className="mx-auto flex max-w-[1900px] items-center justify-between gap-3 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-3">
             <WCLogo className="h-9 w-9 shrink-0 drop-shadow-lg" />
-            <div className="leading-tight">
-              <h1 className="text-[15px] font-extrabold tracking-tight sm:text-base">
-                World Cup <span className="text-emerald-400">2026</span>
+            <div className="min-w-0 leading-tight">
+              <h1 className="font-display truncate text-xl tracking-wider sm:text-2xl">
+                World Cup <span className="text-[var(--pitch-glow)]">26</span>
+                <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">· Bracket Challenge</span>
               </h1>
-              <p className="text-[11px] font-medium text-slate-500">
-                Knockout Bracket Predictor
-                {lastUpdated && (
-                  <span className="text-slate-600">
-                    {" "}
-                    · updated {lastUpdated.toLocaleTimeString()}
-                    {liveLoading ? " (fetching…)" : " · polls every 1 min"}
-                  </span>
+              <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">
+                {liveNums.length > 0 ? (
+                  <span className="text-[var(--live)]">● {liveNums.length} match{liveNums.length > 1 ? "es" : ""} live</span>
+                ) : nextMatch?.kickoff ? (
+                  <>
+                    next: {nextMatch.team1?.code ?? "TBD"} v {nextMatch.team2?.code ?? "TBD"} in{" "}
+                    <span className="tabular-nums text-[var(--next)]">{fmtCountdown(nextMatch.kickoff.getTime() - Date.now())}</span>
+                  </>
+                ) : lastUpdated ? (
+                  `updated ${fmtTimeOnly(lastUpdated)}`
+                ) : (
+                  "connecting…"
                 )}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={revealResults}
-              disabled={loadingResults}
-              className={[
-                "rounded-full px-3.5 py-1.5 text-xs font-bold tracking-tight transition sm:text-sm",
-                reveal
-                  ? "bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/40 hover:bg-emerald-500/30"
-                  : "bg-emerald-500 text-[#04050f] shadow-lg shadow-emerald-500/25 hover:bg-emerald-400",
-                loadingResults ? "opacity-60" : "",
-              ].join(" ")}
-            >
-              {loadingResults ? "Fetching…" : reveal ? "Hide results" : "Reveal results"}
-            </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <ScoreHUD stats={stats} />
             <button
               onClick={resetBracket}
-              className="rounded-full bg-white/5 px-3.5 py-1.5 text-xs font-bold tracking-tight text-slate-300 ring-1 ring-white/10 transition hover:bg-white/10 sm:text-sm"
+              className="btn-ghost rounded-full px-3 py-1.5 text-[11px] font-bold tracking-tight"
+              title="Clear all predictions"
             >
               Reset
             </button>
           </div>
         </div>
-
-        <AnimatePresence>
-          {reveal && <Scoreboard stats={stats} onClose={() => setReveal(false)} />}
-        </AnimatePresence>
       </header>
 
-      {reveal && (
-        <div className="mx-auto max-w-7xl px-4 pt-2 text-center text-[11px] text-slate-500">
-          ✓ your pick was right · <span className="text-rose-400/80">✕</span> wrong ·{" "}
-          <span className="text-emerald-300/70">won</span> marks who actually advanced.
-          {resultSource === "live"
-            ? " Comparing your bracket to live knockout results."
-            : " Comparing your bracket to the projected 2026 outcome."}
-        </div>
+      {/* GAMES RAIL — linear, chronological */}
+      {knockouts.length > 0 && (
+        <GamesRail matches={knockouts} liveNums={liveNums} nextNum={nextMatch?.num ?? null} onOpenMatch={setMatchModal} />
       )}
 
-      {liveError && (
-        <div className="mx-auto max-w-7xl px-4 pt-2 text-center text-[11px] text-amber-400/80">
-          Could not refresh live scores — showing cached data if available.
-        </div>
-      )}
-
-      {(liveKey || nextKey) && (
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-4 px-4 pt-2 text-[11px] text-slate-500">
-          {liveKey && (
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />
-              <span className="text-rose-300/90">Live now</span>
-            </span>
-          )}
-          {nextKey && (
-            <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]" />
-              <span className="text-sky-300/90">Up next</span>
-            </span>
-          )}
+      {error && (
+        <div className="mx-auto max-w-7xl px-4 pt-2 text-center text-[11px] font-semibold text-amber-400/80">
+          Could not refresh live scores — showing last known data.
         </div>
       )}
 
       {/* BRACKET */}
-      <main className="px-4 py-3 lg:py-2">
-        {teams.length < 32 && liveLoading && (
-          <div className="mx-auto mb-4 max-w-md text-center text-sm text-slate-400">
-            Loading knockout bracket…
-          </div>
-        )}
-        {/* MOBILE / TABLET — stacked rounds (below lg) */}
-        <div className="mx-auto max-w-md lg:hidden">
-          <MobileBracket
-            winners={winners}
-            teams={teams}
-            onPick={onPick}
-            reveal={reveal}
-            actual={actual}
-            champion={champion}
-            liveByKey={liveByKey}
-            liveKey={liveKey}
-            nextKey={nextKey}
-            onFlagClick={onFlagClick}
-          />
-        </div>
-
-        {/* DESKTOP — R32 full-height sides; inner rounds scale to fit width */}
-        <div
-          className="hidden h-[calc(100dvh-6.5rem)] min-h-[720px] lg:block"
-          style={{
-            "--match-card-h": `calc((100dvh - 6.5rem) / ${BRACKET_ROWS} * ${MATCH_CARD_ROW_FRAC})`,
-            "--match-card-w": `calc(var(--match-card-h) * ${MATCH_CARD_ASPECT})`,
-          }}
-        >
-          <FitToWidth>
-            <div className="flex h-full items-stretch gap-2">
-              <RoundColumn roundIdx={0} indices={sideIdx(0, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={8} side="left" active={activeFor(0, "left")} />
-              <RoundColumn roundIdx={1} indices={sideIdx(1, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={4} side="left" active={activeFor(1, "left")} />
-              <RoundColumn roundIdx={2} indices={sideIdx(2, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={2} side="left" active={activeFor(2, "left")} />
-              <RoundColumn roundIdx={3} indices={sideIdx(3, "left")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="left" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <SFFinalConnector side="left" active={sfLeftDecided} />
-              <CenterSpine winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} champion={champion} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <SFFinalConnector side="right" active={sfRightDecided} />
-              <RoundColumn roundIdx={3} indices={sideIdx(3, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={2} side="right" active={activeFor(2, "right")} />
-              <RoundColumn roundIdx={2} indices={sideIdx(2, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={4} side="right" active={activeFor(1, "right")} />
-              <RoundColumn roundIdx={1} indices={sideIdx(1, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
-              <Connector count={8} side="right" active={activeFor(0, "right")} />
-              <RoundColumn roundIdx={0} indices={sideIdx(0, "right")} winners={winners} teams={teams} onPick={onPick} reveal={reveal} actual={actual} align="right" showLabel={false} liveByKey={liveByKey} liveKey={liveKey} nextKey={nextKey} onFlagClick={onFlagClick} />
+      <main>
+        {!showBracket &&
+          (loading ? (
+            <LoadingScreen />
+          ) : (
+            <div className="py-24 text-center text-sm text-[var(--text-muted)]">
+              Bracket seeds not available yet — the Round of 32 line-up appears once the group stage is complete.
             </div>
-          </FitToWidth>
-        </div>
+          ))}
+
+        {showBracket && (
+          <ScrollBracket
+            {...bracketProps}
+            champion={champion}
+            actualChampion={actualChampion}
+            stats={stats}
+            liveRoundKey={liveRoundKey}
+          />
+        )}
       </main>
 
-      <footer className="px-4 pb-8 pt-2 text-center text-[11px] text-slate-600 lg:pb-3 lg:pt-1">
-        Click a team to advance them. Picks auto-save · live scores refresh every minute.
+      <footer className="px-4 pb-6 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
+        Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
+        Picks auto-save & auto-grade against live results (refreshes every minute).
       </footer>
     </div>
   );
