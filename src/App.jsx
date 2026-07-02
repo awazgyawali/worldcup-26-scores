@@ -2379,7 +2379,7 @@ function IconChevronDown({ className = "" }) {
   );
 }
 
-function ViewingAsPicker({ name, isLocked, onClick, disabled = false }) {
+function ViewingAsPicker({ name, onClick, disabled = false }) {
   return (
     <button
       type="button"
@@ -2391,16 +2391,6 @@ function ViewingAsPicker({ name, isLocked, onClick, disabled = false }) {
       <span className="viewing-as-picker__label">Viewing as</span>
       <span className="viewing-as-picker__row">
         <span className="viewing-as-picker__name">{name}</span>
-        <span className={["viewing-as-picker__status", isLocked ? "viewing-as-picker__status--locked" : "viewing-as-picker__status--open"].join(" ")}>
-          {isLocked ? (
-            <>
-              <IconLock />
-              Locked
-            </>
-          ) : (
-            <>Open</>
-          )}
-        </span>
         <IconChevronDown className="viewing-as-picker__chevron" />
       </span>
     </button>
@@ -2408,16 +2398,14 @@ function ViewingAsPicker({ name, isLocked, onClick, disabled = false }) {
 }
 
 function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onOpenLock, onReset }) {
-  if (!isViewingSelf) return null;
-
   return (
     <div className="header-toolbar">
       {locked ? (
-        <span className="header-locked" title="Your picks are locked">
+        <span className="header-locked" title={isViewingSelf ? "Your picks are locked" : "This bracket is locked"}>
           <IconLock />
           <span className="hidden sm:inline">Locked</span>
         </span>
-      ) : (
+      ) : isViewingSelf ? (
         <button
           type="button"
           onClick={onOpenLock}
@@ -2428,8 +2416,13 @@ function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onOpenLock
           <IconLock />
           <span className="hidden sm:inline">Lock</span>
         </button>
+      ) : (
+        <span className="header-open" title="This bracket is still open for picks">
+          <IconLock />
+          <span className="hidden sm:inline">Open</span>
+        </span>
       )}
-      {!locked && (
+      {isViewingSelf && !locked && (
         <button
           type="button"
           onClick={onReset}
@@ -3459,7 +3452,6 @@ export default function App() {
               <div className="pointer-events-auto">
                 <ViewingAsPicker
                   name={activeViewerName}
-                  isLocked={activeViewerLocked}
                   onClick={() => setShowFriends(true)}
                   disabled={!profileLoaded || needsName || !authReady}
                 />
@@ -3469,7 +3461,7 @@ export default function App() {
             <div className="flex flex-1 items-center justify-end gap-2">
               <HeaderToolbar
                 isViewingSelf={isViewingSelf}
-                locked={locked}
+                locked={activeViewerLocked}
                 canLock={pickProgress.complete}
                 lockTooltip={lockTooltip}
                 onOpenLock={() => setShowLockConfirm(true)}
