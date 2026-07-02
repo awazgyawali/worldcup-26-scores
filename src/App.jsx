@@ -169,9 +169,15 @@ function getScoreSlotKeyForMatch(match, numToSlot) {
   return `rail-${match.num}`;
 }
 
+const SCORE_GUIDE_HOURS_AHEAD = 24;
+
 function findRailScoreGuideMatch(matches, winners, numToSlot) {
+  const now = Date.now();
+  const cutoff = now + SCORE_GUIDE_HOURS_AHEAD * 60 * 60 * 1000;
   for (const m of matches) {
     if (m.status !== "upcoming" || !m.kickoff) continue;
+    // Only suggest predicting games starting within the next 24 hours
+    if (m.kickoff.getTime() > cutoff) continue;
     const slotKey = getScoreSlotKeyForMatch(m, numToSlot);
     if (!slotKey || getScorePrediction(winners, slotKey)) continue;
     return m;
@@ -3398,11 +3404,14 @@ export default function App() {
   // Combine knockouts and predictable matches for the rail
   // Knockout games (R32 onwards) show bracket predictions - rail is view-only
   // Non-knockout games allow direct rail predictions
+  // Filter out matches without a num to avoid duplicate key warnings
   const railMatches = useMemo(
     () =>
-      [...knockouts, ...predictableMatches].sort(
-        (x, y) => (x.kickoff?.getTime() ?? 0) - (y.kickoff?.getTime() ?? 0)
-      ),
+      [...knockouts, ...predictableMatches]
+        .filter((m) => m.num != null)
+        .sort(
+          (x, y) => (x.kickoff?.getTime() ?? 0) - (y.kickoff?.getTime() ?? 0)
+        ),
     [knockouts, predictableMatches]
   );
 
