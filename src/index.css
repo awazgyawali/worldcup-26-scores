@@ -727,6 +727,19 @@ body {
   color: var(--wrong);
 }
 
+.rail-row--pickable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.rail-row--pickable:hover {
+  background: color-mix(in oklch, var(--gold) 8%, transparent);
+}
+
+.rail-row--pickable:active {
+  background: color-mix(in oklch, var(--gold) 15%, transparent);
+}
+
 .rail-row__score {
   width: 0.85rem;
   text-align: right;
@@ -738,6 +751,11 @@ body {
 
 .rail-row__score--winner {
   color: var(--text-primary);
+}
+
+.rail-row__score--predicted {
+  color: var(--gold-bright);
+  font-weight: 800;
 }
 
 .rail-card__pens {
@@ -796,6 +814,37 @@ body {
 .rail-card--next {
   border-color: color-mix(in oklch, var(--next) 50%, transparent);
   box-shadow: 0 0 24px -8px color-mix(in oklch, var(--next) 45%, transparent);
+}
+
+/* Score prediction styles */
+.rail-card__score-prediction {
+  margin-top: 0.15rem;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--gold-bright) 80%, transparent);
+  background: color-mix(in oklch, var(--gold) 10%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--gold) 25%, transparent);
+}
+
+.rail-card__score-prediction--won {
+  color: var(--pitch-glow);
+  background: color-mix(in oklch, var(--pitch-glow) 12%, transparent);
+  border-color: color-mix(in oklch, var(--pitch-glow) 35%, transparent);
+}
+
+.rail-card__score-prediction--lost {
+  color: var(--wrong);
+  background: color-mix(in oklch, var(--wrong) 12%, transparent);
+  border-color: color-mix(in oklch, var(--wrong) 35%, transparent);
+}
+
+.rail-card__score-prediction--set {
+  color: var(--gold-bright);
+  background: color-mix(in oklch, var(--gold) 15%, transparent);
+  border-color: color-mix(in oklch, var(--gold) 40%, transparent);
 }
 
 /* points pill + compact popover */
@@ -907,6 +956,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   border-top: 1px solid var(--border);
   padding: 0.5rem 0.7rem;
   background: color-mix(in oklch, var(--gold) 8%, transparent);
@@ -967,6 +1017,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   border-top: 1px solid var(--border);
   padding: 0.75rem 1rem;
   background: color-mix(in oklch, var(--gold) 8%, transparent);

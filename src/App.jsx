@@ -223,6 +223,8 @@ const enrichMatch = (m, byNum) => {
   const kickoff = parseKickoff(m.date, m.time);
   const { score, ht, pens, phase, winnerIdx } = readScore(m);
   const status = matchStatus(kickoff, winnerIdx, !!score, isKnockout);
+  // Store FT (90-min) score separately for score prediction grading
+  const ftScore = m.score?.ft ?? null;
   return {
     num: m.num ?? null,
     round: m.round,
@@ -239,6 +241,7 @@ const enrichMatch = (m, byNum) => {
     goals1: m.goals1 || [],
     goals2: m.goals2 || [],
     score,
+    ftScore, // FT (90-min) score for score prediction grading
     ht,
     pens,
     phase,
@@ -377,7 +380,9 @@ const flagSrcSet = (iso2) =>
 // ----------------------------------------------------------------------------
 // PREDICTION LOGIC
 // ----------------------------------------------------------------------------
-const STORAGE_KEY = "wc26-bracket-winners-v4";
+// Note: All predictions are saved to Firebase only (anonymous login mandatory)
+// Local storage persistence has been removed
+const SCORE_SUFFIX = "-score";
 const CONNECTOR_STROKE = "rgba(100, 118, 140, 0.18)";
 const CONNECTOR_STROKE_ACTIVE = "rgba(100, 118, 140, 0.32)";
 const CONNECTOR_STROKE_LIT = "rgba(74, 222, 128, 0.82)";
@@ -428,12 +433,53 @@ function normalize(winners, teams) {
   return w;
 }
 
+// Local storage disabled - all predictions saved to Firebase only
 function loadStoredWinners() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  } catch {
-    return {};
+  return {};
+}
+
+/** Get score prediction for a slot key. Returns [team1Score, team2Score] or null. */
+function getScorePrediction(winners, slotKey) {
+  const scoreKey = slotKey + SCORE_SUFFIX;
+  const score = winners[scoreKey];
+  if (!score || !Array.isArray(score) || score.length !== 2) return null;
+  return score;
+}
+
+/** Set score prediction for a slot key. */
+function setScorePrediction(winners, slotKey, score) {
+  const scoreKey = slotKey + SCORE_SUFFIX;
+  if (!score || !Array.isArray(score) || score.length !== 2 || score[0] == null || score[1] == null) {
+    const next = { ...winners };
+    delete next[scoreKey];
+    return next;
   }
+  return { ...winners, [scoreKey]: score };
+}
+
+/** Clear score predictions when teams change (cascade like winners). */
+function normalizeScores(winners, teams) {
+  if (!teams?.length) return winners;
+  const w = { ...winners };
+  for (let r = 1; r < ROUNDS.length; r++) {
+    for (let m = 0; m < ROUNDS[r].matches; m++) {
+      const [a, b] = getMatchTeams(r, m, w, teams);
+      const slotKey = key(ROUNDS[r].key, m);
+      const curWinner = w[slotKey];
+      const scoreKey = slotKey + SCORE_SUFFIX;
+      // Clear score if winner changed or teams are not determined
+      if (!curWinner || !a || !b) {
+        delete w[scoreKey];
+      }
+    }
+  }
+  // Third place match
+  const [ta, tb] = getThirdPlaceTeams(w, teams);
+  const thirdWinner = w["third-0"];
+  if (!thirdWinner || !ta || !tb) {
+    delete w["third-0" + SCORE_SUFFIX];
+  }
+  return w;
 }
 
 /** slot key → enriched JSON match. */
@@ -459,32 +505,68 @@ const buildActual = (slotMatches) => {
   return actual;
 };
 
-/** Grade picks — points only for finished matches where the user made a pick. */
-function gradeWinners(winners, actual) {
+/** Score prediction points:
+ *  - One side correct: 2 points
+ *  - Both sides correct (exact score): 5 points
+ */
+const SCORE_ONE_SIDE_POINTS = 2;
+const SCORE_EXACT_POINTS = 5;
+
+/** Grade picks — points only for finished matches where the user made a pick.
+ *  Also grades score predictions with tiered scoring:
+ *  - One side correct: 2 points
+ *  - Both sides correct: 5 points
+ */
+function gradeWinners(winners, actual, slotMatches) {
   const byRound = {};
   let correct = 0,
     total = 0,
     points = 0,
-    played = 0;
+    played = 0,
+    scoreOneSide = 0,
+    scoreExact = 0,
+    scorePoints = 0;
   for (const r of [...ROUNDS, THIRD_PLACE]) {
-    byRound[r.key] = { correct: 0, total: 0, played: 0 };
+    byRound[r.key] = { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0 };
     const count = r.matches ?? 1;
     for (let m = 0; m < count; m++) {
       const k = key(r.key, m);
+      const match = slotMatches?.[k];
       if (!actual[k]) continue;
       byRound[r.key].played++;
       played++;
       if (!winners[k]) continue;
       byRound[r.key].total++;
       total++;
-      if (actual[k] === winners[k]) {
+      const teamCorrect = actual[k] === winners[k];
+      if (teamCorrect) {
         byRound[r.key].correct++;
         correct++;
         points += r.points;
       }
+      // Grade score prediction: only if team correct AND match has FT score
+      const predictedScore = getScorePrediction(winners, k);
+      if (teamCorrect && predictedScore && match?.ftScore) {
+        // Compare predicted FT score with actual FT (90-min) score
+        const actualFTScore = match.ftScore;
+        const side1Correct = predictedScore[0] === actualFTScore[0];
+        const side2Correct = predictedScore[1] === actualFTScore[1];
+        const bothCorrect = side1Correct && side2Correct;
+        const oneSideCorrect = (side1Correct || side2Correct) && !bothCorrect;
+
+        if (bothCorrect) {
+          byRound[r.key].scoreExact++;
+          scoreExact++;
+          scorePoints += SCORE_EXACT_POINTS;
+        } else if (oneSideCorrect) {
+          byRound[r.key].scoreOneSide++;
+          scoreOneSide++;
+          scorePoints += SCORE_ONE_SIDE_POINTS;
+        }
+      }
     }
   }
-  return { correct, total, points, played, byRound };
+  return { correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints, totalPoints: points + scorePoints };
 }
 
 // ----------------------------------------------------------------------------
@@ -1117,11 +1199,61 @@ function MatchTeamHeader({ team, refName, won, onFlagClick }) {
   );
 }
 
-function MatchModal({ match, onClose, onFlagClick }) {
+function MatchModal({ match, onClose, onFlagClick, scorePrediction, onSaveScorePrediction, canEdit, isViewingSelf, slotKey, isKnockout }) {
   if (!match) return null;
   const played = match.status === "played";
   const live = match.status === "live";
   const upcoming = match.status === "upcoming";
+  // Score predictions can be edited until match starts, regardless of bracket lock
+  const canEditScore = isViewingSelf;
+
+  // Score prediction state for upcoming matches
+  const [scoreA, setScoreA] = useState(scorePrediction?.[0] ?? "");
+  const [scoreB, setScoreB] = useState(scorePrediction?.[1] ?? "");
+
+  // Reset score inputs when modal opens with new prediction
+  useEffect(() => {
+    setScoreA(scorePrediction?.[0] ?? "");
+    setScoreB(scorePrediction?.[1] ?? "");
+  }, [scorePrediction]);
+
+  const [toast, setToast] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const handleSaveScore = () => {
+    const sA = parseInt(scoreA, 10);
+    const sB = parseInt(scoreB, 10);
+    if (!isNaN(sA) && !isNaN(sB) && sA >= 0 && sB >= 0) {
+      onSaveScorePrediction?.([sA, sB]);
+      showToast(`Score prediction saved: ${sA}–${sB}`);
+    }
+  };
+
+  const handleClearClick = () => {
+    if (hasScorePrediction) {
+      setShowClearConfirm(true);
+    } else {
+      // No prediction to clear, just reset inputs
+      setScoreA("");
+      setScoreB("");
+    }
+  };
+
+  const handleClearConfirm = () => {
+    setScoreA("");
+    setScoreB("");
+    onSaveScorePrediction?.(null);
+    showToast("Score prediction cleared");
+    setShowClearConfirm(false);
+  };
+
+  const hasScorePrediction = scorePrediction != null;
+  const predictedScoreDisplay = hasScorePrediction ? `${scorePrediction[0]}–${scorePrediction[1]}` : null;
 
   return (
     <Modal open={!!match} onClose={onClose}>
@@ -1137,7 +1269,7 @@ function MatchModal({ match, onClose, onFlagClick }) {
         </button>
       </div>
 
-      <div className="nice-scroll flex-1 overflow-y-auto">
+      <div className="nice-scroll relative flex-1 overflow-y-auto">
         <div className="flex items-start justify-center gap-3 px-4 pb-2 pt-5">
           <MatchTeamHeader team={match.team1} refName={match.ref1} won={played && match.winnerIdx === 0} onFlagClick={onFlagClick} />
           <div className="flex w-28 shrink-0 flex-col items-center pt-1">
@@ -1151,7 +1283,9 @@ function MatchModal({ match, onClose, onFlagClick }) {
                 {match.score[0]}–{match.score[1]}
               </motion.div>
             ) : (
-              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">vs</div>
+              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">
+                {predictedScoreDisplay ?? "vs"}
+              </div>
             )}
             {live && (
               <span className="mt-0.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--live)]">
@@ -1190,6 +1324,129 @@ function MatchModal({ match, onClose, onFlagClick }) {
           {match.kickoff && <span>🗓 {fmtKickoff(match.kickoff)}</span>}
           {match.ground && <span>🏟 {match.ground}</span>}
         </div>
+
+        {/* Score Prediction Section for Upcoming Matches - only if teams are confirmed (not TBD/W##/L##) */}
+        {/* Score predictions can be edited until match starts, regardless of bracket lock */}
+        {upcoming && canEditScore && match.team1 && match.team2 && !isRef(match.ref1) && !isRef(match.ref2) && (
+          <div className="mx-4 mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-4">
+            <p className="mb-3 text-center text-[11px] font-bold uppercase tracking-wider text-[var(--gold-bright)]">
+              Predict Full Time Score
+            </p>
+            <div className="mb-3 flex items-center justify-center gap-3">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] text-[var(--text-muted)]">{match.team1?.code ?? "TBD"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={scoreA}
+                  onChange={(e) => setScoreA(e.target.value)}
+                  className="h-12 w-14 rounded-lg border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-xl text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <span className="mt-4 text-lg font-bold text-[var(--text-muted)]">–</span>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] text-[var(--text-muted)]">{match.team2?.code ?? "TBD"}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="20"
+                  value={scoreB}
+                  onChange={(e) => setScoreB(e.target.value)}
+                  className="h-12 w-14 rounded-lg border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-xl text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleClearClick}
+                className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold text-[var(--text-muted)] transition hover:bg-[var(--border-strong)]"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveScore}
+                className="flex-[2] rounded-lg bg-[var(--gold)]/20 px-3 py-2 text-xs font-bold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/40 transition hover:bg-[var(--gold)]/30"
+              >
+                Save Prediction
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[9px] text-[var(--text-muted)]">
+              Correct score + correct team = +10 bonus points
+            </p>
+          </div>
+        )}
+
+        {/* Show saved prediction when viewing other's bracket or when score prediction exists but teams not confirmed */}
+        {upcoming && !canEditScore && hasScorePrediction && (
+          <div className="mx-4 mb-4 rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 p-3 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--gold-bright)]">
+              Your Prediction: {predictedScoreDisplay}
+            </p>
+          </div>
+        )}
+
+        {/* Clear Confirmation Dialog */}
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--bg-deep)]/60 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-xs rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)] p-5 shadow-2xl"
+            >
+              <p className="mb-1 text-center text-sm font-semibold text-[var(--text-primary)]">
+                Clear Prediction?
+              </p>
+              <p className="mb-4 text-center text-xs text-[var(--text-muted)]">
+                This will remove your score prediction for this match.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--border-strong)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearConfirm}
+                  className="flex-1 rounded-lg bg-[var(--wrong)]/15 px-3 py-2 text-xs font-bold text-[var(--wrong)] ring-1 ring-[var(--wrong)]/40 transition hover:bg-[var(--wrong)]/25"
+                >
+                  Clear
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2"
+          >
+            <div className={[
+              "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-lg",
+              toast.type === "success" ? "bg-[var(--pitch)] text-white" : "bg-[var(--wrong)] text-white"
+            ].join(" ")}>
+              {toast.type === "success" ? "✓" : "✕"}
+              {toast.message}
+            </div>
+          </motion.div>
+        )}
       </div>
     </Modal>
   );
@@ -1586,14 +1843,20 @@ function TeamModal({ team, journey, onClose, onOpenMatch }) {
 // ----------------------------------------------------------------------------
 // PREDICTIONS RAIL — compact games cards at the bottom.
 // ----------------------------------------------------------------------------
-function RailTeamRow({ team, refName, score, isWinner, isPick, pickVerdict }) {
+function RailTeamRow({ team, refName, score, predictedScore, isWinner, isPick, pickVerdict, onClick, canPick }) {
+  // Show predicted score if no actual score and prediction exists
+  const displayScore = score != null ? score : predictedScore;
+  const isPredicted = score == null && predictedScore != null;
+
   return (
     <div
+      onClick={onClick}
       className={[
         "rail-row",
         isPick ? "rail-row--pick" : "",
         pickVerdict === "correct" ? "rail-row--correct" : "",
         pickVerdict === "wrong" ? "rail-row--wrong" : "",
+        canPick && team ? "rail-row--pickable" : "",
       ].join(" ")}
     >
       {team ? (
@@ -1609,15 +1872,20 @@ function RailTeamRow({ team, refName, score, isWinner, isPick, pickVerdict }) {
       >
         {team ? team.code : isRef(refName) ? `${refName[0] === "W" ? "W" : "L"}·M${refName.slice(1)}` : "TBD"}
       </span>
-      <span className={["rail-row__score", isWinner ? "rail-row__score--winner" : ""].join(" ")}>
-        {score != null ? score : ""}
+      <span className={[
+        "rail-row__score",
+        isWinner ? "rail-row__score--winner" : "",
+        isPredicted ? "rail-row__score--predicted" : ""
+      ].join(" ")}>
+        {displayScore != null ? displayScore : ""}
       </span>
     </div>
   );
 }
 
-function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index }) {
+function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index, isKnockout, onPickWinner, canPick, scorePrediction }) {
   const played = match.status === "played";
+  const upcoming = match.status === "upcoming";
   const pickId = pickTeam?.id ?? null;
   const actualId = actualTeam?.id ?? null;
   const pickOn1 = !!pickId && match.team1?.id === pickId;
@@ -1628,6 +1896,13 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
   if (revealGrades && played && pickId && actualId) {
     pickVerdict = pickId === actualId ? "correct" : "wrong";
   }
+
+  // For non-knockout games (base/group stage), allow picking a winner
+  // Knockout games (R32 onwards) predictions come from bracket only
+  const handlePick = (team) => {
+    if (isKnockout || !onPickWinner || !upcoming) return;
+    onPickWinner(team.id);
+  };
 
   const footer = () => {
     if (isLive)
@@ -1687,17 +1962,23 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
         team={match.team1}
         refName={match.ref1}
         score={match.score?.[0]}
+        predictedScore={upcoming && scorePrediction ? scorePrediction[0] : null}
         isWinner={match.winnerIdx === 0}
         isPick={pickOn1}
         pickVerdict={pickOn1 ? pickVerdict : undefined}
+        onClick={!isKnockout && match.team1 ? () => handlePick(match.team1) : undefined}
+        canPick={!isKnockout && canPick && upcoming}
       />
       <RailTeamRow
         team={match.team2}
         refName={match.ref2}
         score={match.score?.[1]}
+        predictedScore={upcoming && scorePrediction ? scorePrediction[1] : null}
         isWinner={match.winnerIdx === 1}
         isPick={pickOn2}
         pickVerdict={pickOn2 ? pickVerdict : undefined}
+        onClick={!isKnockout && match.team2 ? () => handlePick(match.team2) : undefined}
+        canPick={!isKnockout && canPick && upcoming}
       />
 
       {match.pens && (
@@ -1715,7 +1996,7 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
   );
 }
 
-function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch }) {
+function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner }) {
   const scrollRef = useRef(null);
   const anchorRef = useRef(null);
   const anchored = useRef(false);
@@ -1743,9 +2024,21 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
             ) : null;
           lastDate = m.date;
 
+          const isKnockout = m.isKnockout;
           const slotKey = numToSlot.get(m.num);
-          const pickId = slotKey ? winners[slotKey] : null;
-          const actualId = slotKey ? actual[slotKey] : null;
+          // For non-knockout games, use rail- prefix
+          const railKey = `rail-${m.num}`;
+          const pickId = isKnockout
+            ? (slotKey ? winners[slotKey] : null)
+            : winners[railKey];
+          const actualId = isKnockout
+            ? (slotKey ? actual[slotKey] : null)
+            : (m.status === "played" && m.winner ? m.winner.id : null);
+          // Get score prediction for this match
+          const scoreKey = isKnockout
+            ? (slotKey ? slotKey + SCORE_SUFFIX : null)
+            : railKey + SCORE_SUFFIX;
+          const scorePrediction = scoreKey ? getScorePrediction(winners, scoreKey.replace(SCORE_SUFFIX, "")) : null;
 
           return (
             <React.Fragment key={m.num}>
@@ -1760,6 +2053,10 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
                   isNext={m.num === nextNum}
                   revealGrades={revealGrades}
                   onClick={() => onOpenMatch(m)}
+                  isKnockout={isKnockout}
+                  onPickWinner={!isKnockout ? (teamId) => onPickRailWinner?.(m.num, teamId, isKnockout) : undefined}
+                  canPick={canEdit && !isKnockout}
+                  scorePrediction={scorePrediction}
                 />
               </div>
             </React.Fragment>
@@ -1890,8 +2187,13 @@ function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onOpenLock
 function PointsPill({ stats }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  const points = useCountUp(stats.points);
+  // Use totalPoints (includes score prediction points) instead of just points
+  const totalPoints = useCountUp(stats.totalPoints ?? stats.points);
   const rounds = [...ROUNDS, THIRD_PLACE];
+  const hasScorePoints = (stats.scorePoints ?? 0) > 0;
+  const scoreOneSide = stats.scoreOneSide ?? 0;
+  const scoreExact = stats.scoreExact ?? 0;
+  const scorePoints = stats.scorePoints ?? 0;
 
   useEffect(() => {
     if (!open) return;
@@ -1918,7 +2220,17 @@ function PointsPill({ stats }) {
         title="Tap for points breakdown"
       >
         <span className="points-pill__label">Points:</span>
-        <span className="points-pill__value">{points}</span>
+        <span className="points-pill__value">{totalPoints}</span>
+        {hasScorePoints && (
+          <span className="ml-1 rounded-full bg-[var(--gold)]/20 px-1.5 py-0.5 text-[9px] font-bold text-[var(--gold-bright)]">
+            +{scorePoints}
+          </span>
+        )}
+        {(stats.railScoreOneSide > 0 || stats.railScoreExact > 0) && (
+          <span className="ml-1 rounded-full bg-[var(--pitch-glow)]/20 px-1.5 py-0.5 text-[9px] font-bold text-[var(--pitch-glow)]">
+            R+{stats.railScorePoints ?? 0}
+          </span>
+        )}
         <IconChevronDown className={["points-pill__chevron", open ? "rotate-180" : ""].join(" ")} />
       </button>
 
@@ -1927,8 +2239,10 @@ function PointsPill({ stats }) {
           <p className="points-popover__hint">Finished matches only · later rounds worth more</p>
           <ul className="points-popover__list">
             {rounds.map((r) => {
-              const s = stats.byRound[r.key] ?? { correct: 0, total: 0, played: 0 };
+              const s = stats.byRound[r.key] ?? { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0 };
               const earned = s.correct * r.points;
+              const roundScorePoints = s.scorePoints ?? 0;
+              const totalRoundPoints = earned + roundScorePoints;
               return (
                 <li key={r.key} className="points-popover__row">
                   <div className="min-w-0">
@@ -1939,15 +2253,55 @@ function PointsPill({ stats }) {
                     <div className={["text-[10px] font-black tabular-nums", s.total > 0 && s.correct === s.total ? "text-[var(--pitch-glow)]" : "text-[var(--text-muted)]"].join(" ")}>
                       {s.total > 0 ? `${s.correct}/${s.total}` : "—"}
                     </div>
-                    <div className="font-display text-sm leading-none tracking-wider text-[var(--gold-bright)]">{earned}</div>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="font-display text-sm leading-none tracking-wider text-[var(--gold-bright)]">{earned}</span>
+                      {(s.scoreOneSide > 0 || s.scoreExact > 0) && (
+                        <div className="flex gap-1">
+                          {s.scoreOneSide > 0 && (
+                            <span className="rounded-full bg-[var(--gold)]/10 px-1 py-0.5 text-[7px] font-bold text-[var(--gold-bright)]/70">
+                              1S:{s.scoreOneSide}
+                            </span>
+                          )}
+                          {s.scoreExact > 0 && (
+                            <span className="rounded-full bg-[var(--gold)]/20 px-1 py-0.5 text-[7px] font-bold text-[var(--gold-bright)]">
+                              Ex:{s.scoreExact}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </li>
               );
             })}
           </ul>
           <div className="points-popover__total">
-            <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">Total</span>
-            <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{stats.points}</span>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">Base</span>
+                <span className="font-display text-base leading-none tracking-wider text-[var(--text-muted)]">{stats.points}</span>
+              </div>
+              {hasScorePoints && (
+                <>
+                  {scoreOneSide > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--gold-bright)]/70">1 Side ({scoreOneSide})</span>
+                      <span className="font-display text-sm leading-none tracking-wider text-[var(--gold-bright)]/70">+{scoreOneSide * 2}</span>
+                    </div>
+                  )}
+                  {scoreExact > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--gold-bright)]">Exact ({scoreExact})</span>
+                      <span className="font-display text-sm leading-none tracking-wider text-[var(--gold-bright)]">+{scoreExact * 5}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">Total</span>
+              <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{stats.totalPoints ?? stats.points}</span>
+            </div>
           </div>
         </div>
       )}
@@ -2339,6 +2693,7 @@ export default function App() {
   const slotMatches = useMemo(() => buildSlotMatches(byNum), [byNum]);
   const actual = useMemo(() => buildActual(slotMatches), [slotMatches]);
 
+  // Knockout matches for bracket
   const knockouts = useMemo(
     () =>
       matches
@@ -2347,11 +2702,32 @@ export default function App() {
     [matches]
   );
 
-  const liveNums = useMemo(() => knockouts.filter((m) => m.status === "live").map((m) => m.num), [knockouts]);
+  // Non-knockout matches (group stage) with confirmed opponents for rail predictions
+  // These are "base" games where teams are confirmed, not derived from bracket progression
+  const predictableMatches = useMemo(
+    () =>
+      matches
+        .filter((m) => !m.isKnockout && m.team1 && m.team2 && !isRef(m.ref1) && !isRef(m.ref2))
+        .sort((x, y) => (x.kickoff?.getTime() ?? 0) - (y.kickoff?.getTime() ?? 0)),
+    [matches]
+  );
+
+  // Combine knockouts and predictable matches for the rail
+  // Knockout games (R32 onwards) show bracket predictions - rail is view-only
+  // Non-knockout games allow direct rail predictions
+  const railMatches = useMemo(
+    () =>
+      [...knockouts, ...predictableMatches].sort(
+        (x, y) => (x.kickoff?.getTime() ?? 0) - (y.kickoff?.getTime() ?? 0)
+      ),
+    [knockouts, predictableMatches]
+  );
+
+  const liveNums = useMemo(() => railMatches.filter((m) => m.status === "live").map((m) => m.num), [railMatches]);
   const nextMatch = useMemo(() => {
     const now = Date.now();
-    return knockouts.find((m) => m.status === "upcoming" && m.kickoff && m.kickoff.getTime() > now) || null;
-  }, [knockouts]);
+    return railMatches.find((m) => m.status === "upcoming" && m.kickoff && m.kickoff.getTime() > now) || null;
+  }, [railMatches]);
 
   const numToSlot = useMemo(() => {
     const map = new Map();
@@ -2361,19 +2737,17 @@ export default function App() {
   const liveKey = liveNums.length ? numToSlot.get(liveNums[0]) : null;
   const nextKey = nextMatch ? numToSlot.get(nextMatch.num) : null;
 
-  // Re-validate stored picks once bracket seeds load.
+  // Re-validate stored picks once bracket seeds load. Also normalize scores.
   useEffect(() => {
-    if (teams.length === 32 && !locked) setWinners((w) => normalize(w, teams));
+    if (teams.length === 32 && !locked) {
+      setWinners((w) => {
+        const normalizedWinners = normalize(w, teams);
+        return normalizeScores(normalizedWinners, teams);
+      });
+    }
   }, [teams.length, locked]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (readOnly) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(winners));
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [winners, readOnly, locked]);
+  // Predictions are saved to Firebase only - localStorage disabled
 
   const isViewingSelf = !viewingFriend;
   const activeViewerName = viewingFriend?.name ?? name ?? "You";
@@ -2409,9 +2783,15 @@ export default function App() {
       const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
       setWinners((prev) => {
         const next = { ...prev };
-        if (next[rk] === team.id) delete next[rk];
-        else next[rk] = team.id;
-        return normalize(next, teams);
+        if (next[rk] === team.id) {
+          delete next[rk];
+          // Also clear score prediction when winner is cleared
+          delete next[rk + SCORE_SUFFIX];
+        } else {
+          next[rk] = team.id;
+        }
+        const normalized = normalize(next, teams);
+        return normalizeScores(normalized, teams);
       });
     },
     [teams, canEdit, locked]
@@ -2433,11 +2813,7 @@ export default function App() {
     if (locked) return;
     setWinners({});
     prevChampRef.current = null;
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+    // Predictions are saved to Firebase only - no localStorage to clear
   }, [locked]);
 
   const handleLock = useCallback(async () => {
@@ -2461,16 +2837,113 @@ export default function App() {
     setMatchModal(m);
   }, []);
 
-  // Grade picks against real results as they land.
-  const stats = useMemo(() => gradeWinners(displayWinners, actual), [displayWinners, actual]);
+  // Score prediction handler - integrated into MatchModal
+  // Score predictions are NOT affected by bracket lock - they can be changed until match starts
+  const saveScorePrediction = useCallback((slotKey, score) => {
+    if (!canEdit) return; // Only check canEdit (viewing self), not locked
+    setWinners((prev) => {
+      const next = setScorePrediction(prev, slotKey, score);
+      return normalizeScores(next, teams);
+    });
+  }, [canEdit, teams]);
+
+  // Grade picks against real results as they land. Include slotMatches for score prediction grading.
+  const stats = useMemo(() => gradeWinners(displayWinners, actual, slotMatches), [displayWinners, actual, slotMatches]);
+
+  // Grade rail game predictions (non-knockout games with rail- prefix)
+  const railStats = useMemo(() => {
+    const railKeys = Object.keys(displayWinners).filter(k => k.startsWith("rail-"));
+    let correct = 0, total = 0, scoreOneSide = 0, scoreExact = 0, scorePoints = 0;
+
+    for (const key of railKeys) {
+      const matchNum = parseInt(key.replace("rail-", ""), 10);
+      const match = byNum.get(matchNum);
+      if (!match || match.status !== "played" || !match.winner) continue;
+
+      total++;
+      const predictedWinner = displayWinners[key];
+      if (predictedWinner === match.winner.id) {
+        correct++;
+        // Check score prediction with tiered scoring
+        const scoreKey = key + SCORE_SUFFIX;
+        const predictedScore = displayWinners[scoreKey];
+        if (predictedScore && match.ftScore) {
+          const side1Correct = predictedScore[0] === match.ftScore[0];
+          const side2Correct = predictedScore[1] === match.ftScore[1];
+          const bothCorrect = side1Correct && side2Correct;
+          const oneSideCorrect = (side1Correct || side2Correct) && !bothCorrect;
+
+          if (bothCorrect) {
+            scoreExact++;
+            scorePoints += SCORE_EXACT_POINTS;
+          } else if (oneSideCorrect) {
+            scoreOneSide++;
+            scorePoints += SCORE_ONE_SIDE_POINTS;
+          }
+        }
+      }
+    }
+
+    return { correct, total, scoreOneSide, scoreExact, scorePoints, points: correct * 1 + scorePoints };
+  }, [displayWinners, byNum]);
+
+  // Combined stats including both bracket and rail predictions
+  const combinedStats = useMemo(() => ({
+    ...stats,
+    railCorrect: railStats.correct,
+    railTotal: railStats.total,
+    railScoreOneSide: railStats.scoreOneSide,
+    railScoreExact: railStats.scoreExact,
+    railScorePoints: railStats.scorePoints,
+    totalPoints: (stats.totalPoints ?? stats.points) + railStats.points,
+  }), [stats, railStats]);
 
   const rankedFriends = useMemo(
     () =>
       friends
-        .map((friend) => ({
-          ...friend,
-          ...gradeWinners(friend.winners, actual),
-        }))
+        .map((friend) => {
+          const graded = gradeWinners(friend.winners, actual, slotMatches);
+          // Calculate friend's rail stats with tiered scoring
+          const friendRailKeys = Object.keys(friend.winners).filter(k => k.startsWith("rail-"));
+          let railCorrect = 0, railTotal = 0, railScoreOneSide = 0, railScoreExact = 0, railScorePoints = 0;
+          for (const key of friendRailKeys) {
+            const matchNum = parseInt(key.replace("rail-", ""), 10);
+            const match = byNum.get(matchNum);
+            if (!match || match.status !== "played" || !match.winner) continue;
+            railTotal++;
+            if (friend.winners[key] === match.winner.id) {
+              railCorrect++;
+              const scoreKey = key + SCORE_SUFFIX;
+              const predictedScore = friend.winners[scoreKey];
+              if (predictedScore && match.ftScore) {
+                const side1Correct = predictedScore[0] === match.ftScore[0];
+                const side2Correct = predictedScore[1] === match.ftScore[1];
+                const bothCorrect = side1Correct && side2Correct;
+                const oneSideCorrect = (side1Correct || side2Correct) && !bothCorrect;
+
+                if (bothCorrect) {
+                  railScoreExact++;
+                  railScorePoints += SCORE_EXACT_POINTS;
+                } else if (oneSideCorrect) {
+                  railScoreOneSide++;
+                  railScorePoints += SCORE_ONE_SIDE_POINTS;
+                }
+              }
+            }
+          }
+          const railPoints = railCorrect * 1 + railScorePoints;
+
+          return {
+            ...friend,
+            ...graded,
+            railCorrect,
+            railTotal,
+            railScoreOneSide,
+            railScoreExact,
+            // Use totalPoints which includes both bracket and rail score prediction points
+            points: (graded.totalPoints ?? graded.points) + railPoints,
+          };
+        })
         .sort(
           (a, b) =>
             b.correct - a.correct ||
@@ -2478,7 +2951,7 @@ export default function App() {
             b.total - a.total ||
             a.name.localeCompare(b.name)
         ),
-    [friends, actual]
+    [friends, actual, slotMatches, byNum]
   );
 
   const bracketProps = {
@@ -2492,9 +2965,12 @@ export default function App() {
     onFlagClick,
     onOpenMatch: openMatchBySlot,
     readOnly: !canEdit,
-    revealGrades: activeViewerLocked,
+    revealGrades: true, // Always show grading for played matches
   };
   const showBracket = teams.length === 32;
+
+  // Use combined stats for display (includes both bracket and rail predictions)
+  const displayStats = combinedStats;
 
   return (
     <div className="app-shell text-[var(--text-primary)]">
@@ -2520,7 +2996,30 @@ export default function App() {
         onClose={() => setTeamModal(null)}
         onOpenMatch={openMatchFromTeam}
       />
-      <MatchModal match={matchModal} onClose={() => setMatchModal(null)} onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }} />
+      <MatchModal
+        match={matchModal}
+        onClose={() => setMatchModal(null)}
+        onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
+        scorePrediction={matchModal ? (() => {
+          const isKnockout = matchModal.isKnockout;
+          const key = isKnockout
+            ? (numToSlot.get(matchModal.num) || "")
+            : `rail-${matchModal.num}`;
+          return getScorePrediction(displayWinners, key);
+        })() : null}
+        onSaveScorePrediction={(score) => {
+          if (!matchModal) return;
+          const isKnockout = matchModal.isKnockout;
+          const key = isKnockout
+            ? numToSlot.get(matchModal.num)
+            : `rail-${matchModal.num}`;
+          if (key) saveScorePrediction(key, score);
+        }}
+        canEdit={canEdit}
+        isViewingSelf={!viewingFriend} // Score predictions allowed even when bracket is locked
+        slotKey={matchModal ? (matchModal.isKnockout ? numToSlot.get(matchModal.num) : `rail-${matchModal.num}`) : null}
+        isKnockout={matchModal?.isKnockout ?? false}
+      />
 
       {/* HEADER */}
       <header className="broadcast-bar shrink-0 z-40">
@@ -2578,10 +3077,18 @@ export default function App() {
       {!isViewingSelf && (
         <div className="shrink-0 border-b border-[var(--pitch-glow)]/20 bg-[color-mix(in_oklch,var(--pitch)_18%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--pitch-glow)]">
           {activeViewerName}&apos;s bracket is read-only
-          {stats.total > 0 && (
+          {displayStats.total > 0 && (
             <span className="text-[var(--gold-bright)]">
               {" "}
-              · {stats.points} pts · {stats.correct}/{stats.total} correct
+              · {displayStats.totalPoints} pts · {displayStats.correct}/{displayStats.total} correct
+              {(displayStats.scoreOneSide > 0 || displayStats.scoreExact > 0) && (
+                <span>
+                  {" · "}
+                  {displayStats.scoreOneSide > 0 && `${displayStats.scoreOneSide}×1S`}
+                  {displayStats.scoreOneSide > 0 && displayStats.scoreExact > 0 && " + "}
+                  {displayStats.scoreExact > 0 && `${displayStats.scoreExact}×Ex`}
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -2609,26 +3116,39 @@ export default function App() {
             {...bracketProps}
             champion={champion}
             actualChampion={actualChampion}
-            stats={stats}
+            stats={displayStats}
           />
         )}
       </main>
 
-      {knockouts.length > 0 && (
+      {railMatches.length > 0 && (
         <PredictionsRail
-          matches={knockouts}
+          matches={railMatches}
           liveNums={liveNums}
           nextNum={nextMatch?.num ?? null}
           numToSlot={numToSlot}
           winners={displayWinners}
           actual={actual}
           teams={teams}
-          revealGrades={activeViewerLocked}
+          revealGrades={true} // Always show grading for played matches
           onOpenMatch={setMatchModal}
+          // Rail predictions (non-knockout) can be edited even when bracket is locked
+          canEdit={isViewingSelf}
+          onPickRailWinner={isViewingSelf ? (matchNum, teamId, isKnockout) => {
+            // Only allow rail predictions on non-knockout games (base games like group stage)
+            // Knockout games (R32 onwards) predictions come from bracket only
+            if (isKnockout) return;
+            // Store rail predictions separately with rail- prefix
+            const key = `rail-${matchNum}`;
+            setWinners((prev) => ({
+              ...prev,
+              [key]: teamId === prev[key] ? undefined : teamId, // Toggle off if same
+            }));
+          } : undefined}
         />
       )}
 
-      {knockouts.length === 0 && (
+      {railMatches.length === 0 && (
         <footer className="shrink-0 px-4 pb-5 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
           {!isViewingSelf ? (
             <>Tap &ldquo;Viewing as&rdquo; above to switch brackets · flags and match details still work in read-only mode.</>
