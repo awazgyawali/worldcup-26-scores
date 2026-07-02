@@ -382,6 +382,17 @@ body {
   border-color: color-mix(in oklch, var(--wrong) 22%, transparent);
 }
 
+.header-action--google {
+  color: var(--text-primary);
+  background: color-mix(in oklch, white 8%, transparent);
+  border-color: color-mix(in oklch, white 14%, transparent);
+}
+
+.header-action--google:hover {
+  background: color-mix(in oklch, white 14%, transparent);
+  border-color: color-mix(in oklch, white 22%, transparent);
+}
+
 .header-action--primary {
   color: var(--text-primary);
   background: color-mix(in oklch, var(--pitch) 22%, transparent);

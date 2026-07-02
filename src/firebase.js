@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -19,9 +19,11 @@ export const db = getFirestore(app);
 
 export const PREDICTIONS_COLLECTION = "predictions";
 
+export const googleProvider = new GoogleAuthProvider();
+
 /**
  * Firebase Console setup for production (e.g. Cloudflare Workers):
- * 1. Authentication → Sign-in method → enable Anonymous
+ * 1. Authentication → Sign-in method → enable Anonymous and Google
  * 2. Authentication → Settings → Authorized domains → add your host
  *    (e.g. worldcup-26-scores.brainants.workers.dev)
  *

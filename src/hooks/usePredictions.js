@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { auth, db, PREDICTIONS_COLLECTION } from "../firebase";
+import { linkWithPopup, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { auth, db, googleProvider, PREDICTIONS_COLLECTION } from "../firebase";
 
 const SAVE_DEBOUNCE_MS = 3000;
 
@@ -27,8 +27,14 @@ function formatSyncError(err, context = "save") {
   if (code === "permission-denied") {
     return "Firestore denied the save. Check that you're signed in and rules allow writes to your own predictions doc.";
   }
+  if (code === "auth/credential-already-in-use") {
+    return "This Google account is already linked to another profile.";
+  }
+  if (code === "auth/popup-closed-by-user") {
+    return "";
+  }
   if (context === "auth") {
-    return `Sign-in failed. Enable Anonymous auth in Firebase and add "${host}" to Authorized domains.`;
+    return `Sign-in failed. Enable Anonymous and Google auth in Firebase and add "${host}" to Authorized domains.`;
   }
   return message || "Failed to sync predictions.";
 }
@@ -50,6 +56,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const [locking, setLocking] = useState(false);
   const [friends, setFriends] = useState([]);
   const [viewingFriendUid, setViewingFriendUid] = useState(null);
+  const [isAnonymous, setIsAnonymous] = useState(true);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const saveTimerRef = useRef(null);
   const loadedRemoteRef = useRef(false);
@@ -256,6 +264,47 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     }
   }, [persistWinners]);
 
+  const connectGoogle = useCallback(async ({ submitNameAfter = false } = {}) => {
+    setLinkingGoogle(true);
+    setAuthError(null);
+    try {
+      let user = auth.currentUser;
+      if (!user) {
+        const credential = await signInAnonymously(auth);
+        user = credential.user;
+        setUid(user.uid);
+      }
+
+      if (user.isAnonymous) {
+        const result = await linkWithPopup(user, googleProvider);
+        user = result.user;
+      }
+
+      setIsAnonymous(user.isAnonymous);
+
+      if (submitNameAfter) {
+        const displayName = user.displayName?.trim() || "";
+        if (displayName) {
+          const ok = await submitName(displayName);
+          return ok ? { success: true } : { success: false };
+        }
+        return { needsManualName: true };
+      }
+
+      return { success: true };
+    } catch (err) {
+      if (err?.code === "auth/popup-closed-by-user") {
+        return { cancelled: true };
+      }
+      console.error("[WC26] Google sign-in failed:", err);
+      const message = formatSyncError(err, "auth");
+      if (message) setAuthError(message);
+      throw err;
+    } finally {
+      setLinkingGoogle(false);
+    }
+  }, [submitName]);
+
   useEffect(() => {
     if (!enabled) {
       setAuthReady(true);
@@ -265,6 +314,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUid(user.uid);
+        setIsAnonymous(user.isAnonymous);
         setAuthError(null);
         setAuthReady(true);
         return;
@@ -356,6 +406,9 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     clearSyncError,
     persistWinners,
     submitName,
+    connectGoogle,
+    isAnonymous,
+    linkingGoogle,
     locked,
     locking,
     lockPredictions,
