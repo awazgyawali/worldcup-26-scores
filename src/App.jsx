@@ -380,6 +380,17 @@ const flagSrcSet = (iso2) =>
 const STORAGE_KEY = "wc26-bracket-winners-v4";
 const CONNECTOR_STROKE = "rgba(100, 118, 140, 0.18)";
 const CONNECTOR_STROKE_ACTIVE = "rgba(100, 118, 140, 0.32)";
+const CONNECTOR_STROKE_LIT = "rgba(74, 222, 128, 0.82)";
+
+const connectorStroke = (isActive, highlightActive) => {
+  if (!isActive) return CONNECTOR_STROKE;
+  return highlightActive ? CONNECTOR_STROKE_LIT : CONNECTOR_STROKE_ACTIVE;
+};
+
+const connectorWidth = (isActive, highlightActive) => {
+  if (!isActive) return 1;
+  return highlightActive ? 2 : 1.5;
+};
 
 function getMatchTeams(roundIdx, matchIdx, winners, teams) {
   if (!teams?.length) return [null, null];
@@ -534,19 +545,20 @@ function WCLogo({ className = "" }) {
 // ----------------------------------------------------------------------------
 // CONNECTORS — pairs of matches merge into the next round.
 // ----------------------------------------------------------------------------
-function Connector({ count, side = "left", active }) {
+function Connector({ count, side = "left", active, highlightActive = false }) {
   const paths = [];
   for (let i = 0; i < count; i++) {
     const y1 = i + 0.5;
     const y2 = i % 2 === 0 ? i + 1 : i;
     const d = side === "left" ? `M0,${y1} H50 V${y2} H100` : `M100,${y1} H50 V${y2} H0`;
+    const isActive = !!active?.[i];
     paths.push(
       <path
         key={i}
         d={d}
         fill="none"
-        strokeWidth={active?.[i] ? 1.5 : 1}
-        stroke={active?.[i] ? CONNECTOR_STROKE_ACTIVE : CONNECTOR_STROKE}
+        strokeWidth={connectorWidth(isActive, highlightActive)}
+        stroke={connectorStroke(isActive, highlightActive)}
         vectorEffect="non-scaling-stroke"
         style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
       />
@@ -562,15 +574,16 @@ function Connector({ count, side = "left", active }) {
 }
 
 /** Straight feeder line from each semi-final into the central final. */
-function SFFinalConnector({ active }) {
+function SFFinalConnector({ active, highlightActive = false }) {
+  const isActive = !!active;
   return (
     <div className="shrink-0 self-stretch" style={{ width: 32 }}>
       <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-full w-full">
         <path
           d="M0,50 H100"
           fill="none"
-          strokeWidth={active ? 1.5 : 1}
-          stroke={active ? CONNECTOR_STROKE_ACTIVE : CONNECTOR_STROKE}
+          strokeWidth={connectorWidth(isActive, highlightActive)}
+          stroke={connectorStroke(isActive, highlightActive)}
           vectorEffect="non-scaling-stroke"
           style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
         />
@@ -2062,6 +2075,7 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
   };
 
   const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats };
+  const highlightConnectors = !readOnly;
 
   return (
     <>
@@ -2069,13 +2083,13 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
         <div className="bracket-tree mx-auto flex w-max items-stretch gap-0 px-4">
           {/* LEFT half of the tree */}
           <BracketColumn roundIdx={0} indices={sideIdx(0, "left")} align="left" colRef={setColRef("r32", "left")} {...shared} />
-          <Connector count={8} side="left" active={activeFor(0, "left")} />
+          <Connector count={8} side="left" active={activeFor(0, "left")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={1} indices={sideIdx(1, "left")} align="left" colRef={setColRef("r16", "left")} {...shared} />
-          <Connector count={4} side="left" active={activeFor(1, "left")} />
+          <Connector count={4} side="left" active={activeFor(1, "left")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={2} indices={sideIdx(2, "left")} align="left" colRef={setColRef("qf", "left")} {...shared} />
-          <Connector count={2} side="left" active={activeFor(2, "left")} />
+          <Connector count={2} side="left" active={activeFor(2, "left")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={3} indices={sideIdx(3, "left")} align="left" colRef={setColRef("sf", "left")} {...shared} />
-          <SFFinalConnector active={!!winners[key("sf", 0)]} />
+          <SFFinalConnector active={!!winners[key("sf", 0)]} highlightActive={highlightConnectors} />
 
           {/* CENTER — trophy, final, champion, third place */}
           <div ref={setColRef("final", "left")} className="flex h-full items-stretch">
@@ -2083,13 +2097,13 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
           </div>
 
           {/* RIGHT half of the tree (mirrored) */}
-          <SFFinalConnector active={!!winners[key("sf", 1)]} />
+          <SFFinalConnector active={!!winners[key("sf", 1)]} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={3} indices={sideIdx(3, "right")} align="right" colRef={setColRef("sf", "right")} {...shared} />
-          <Connector count={2} side="right" active={activeFor(2, "right")} />
+          <Connector count={2} side="right" active={activeFor(2, "right")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={2} indices={sideIdx(2, "right")} align="right" colRef={setColRef("qf", "right")} {...shared} />
-          <Connector count={4} side="right" active={activeFor(1, "right")} />
+          <Connector count={4} side="right" active={activeFor(1, "right")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={1} indices={sideIdx(1, "right")} align="right" colRef={setColRef("r16", "right")} {...shared} />
-          <Connector count={8} side="right" active={activeFor(0, "right")} />
+          <Connector count={8} side="right" active={activeFor(0, "right")} highlightActive={highlightConnectors} />
           <BracketColumn roundIdx={0} indices={sideIdx(0, "right")} align="right" colRef={setColRef("r32", "right")} {...shared} />
         </div>
       </div>
