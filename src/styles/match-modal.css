@@ -1,0 +1,7 @@
+/* ---------------------------------------------------------------- modal timeline */
+.goal-minute {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-variant-numeric: tabular-nums;
+}
+

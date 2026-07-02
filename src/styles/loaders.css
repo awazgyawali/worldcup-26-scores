@@ -1,0 +1,112 @@
+/* ---------------------------------------------------------------- ball loader */
+@keyframes ballBounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-22px) rotate(180deg); }
+}
+@keyframes ballShadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.35; }
+  50% { transform: scaleX(0.55); opacity: 0.15; }
+}
+.ball-bounce { animation: ballBounce 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
+.ball-shadow { animation: ballShadow 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
+
+.boot-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in oklch, var(--pitch) 18%, transparent), transparent 70%),
+    var(--bg-deep);
+}
+
+.boot-loading__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.boot-loading__ball {
+  font-size: 4.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.boot-loading__shadow {
+  margin-top: 0.35rem;
+  width: 2.75rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  filter: blur(2px);
+}
+
+.boot-loading__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+
+/* ---------------------------------------------------------------- sync status tooltip (fixed — no layout shift) */
+.sync-tooltip {
+  position: fixed;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: min(22rem, calc(100vw - 1.25rem));
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.sync-tooltip p {
+  margin: 0;
+  flex: 1;
+}
+
+.sync-tooltip--saving {
+  background: color-mix(in oklch, var(--bg-elevated) 92%, transparent);
+  border: 1px solid color-mix(in oklch, var(--next) 35%, var(--border));
+  color: var(--next);
+  backdrop-filter: blur(10px);
+}
+
+.sync-tooltip--error {
+  pointer-events: auto;
+  background: color-mix(in oklch, var(--wrong) 16%, var(--bg-elevated));
+  border: 1px solid color-mix(in oklch, var(--wrong) 40%, var(--border));
+  color: var(--wrong);
+  backdrop-filter: blur(10px);
+}
+
+.sync-tooltip__dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.7rem;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.sync-tooltip__dismiss:hover {
+  opacity: 1;
+}
+
