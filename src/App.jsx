@@ -440,10 +440,25 @@ function loadStoredWinners() {
 
 /** Get score prediction for a slot key. Returns [team1Score, team2Score] or null. */
 function getScorePrediction(winners, slotKey) {
+  if (!slotKey) return null;
   const scoreKey = slotKey + SCORE_SUFFIX;
   const score = winners[scoreKey];
   if (!score || !Array.isArray(score) || score.length !== 2) return null;
   return score;
+}
+
+/** Map stored score prediction onto displayed team order [sideA, sideB]. */
+function mapPredictedScores(predictedScore, sideA, sideB, match) {
+  if (!predictedScore || !sideA || !sideB) return [null, null];
+  if (match?.team1 && match?.team2) {
+    if (sideA.id === match.team1.id && sideB.id === match.team2.id) {
+      return [predictedScore[0], predictedScore[1]];
+    }
+    if (sideA.id === match.team2.id && sideB.id === match.team1.id) {
+      return [predictedScore[1], predictedScore[0]];
+    }
+  }
+  return [predictedScore[0], predictedScore[1]];
 }
 
 /** Set score prediction for a slot key. */
@@ -569,6 +584,83 @@ function gradeWinners(winners, actual, slotMatches) {
   return { correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints, totalPoints: points + scorePoints };
 }
 
+/** Get detailed prediction info for a single match - used when viewing others' brackets */
+function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints, teamById, byNum) {
+  // Get winner pick
+  let pickKey = slotKey;
+  let scoreKey = slotKey + SCORE_SUFFIX;
+  
+  // For rail games (non-knockout), use rail- prefix
+  if (!isKnockout && match.num) {
+    pickKey = `rail-${match.num}`;
+    scoreKey = pickKey + SCORE_SUFFIX;
+  }
+  
+  const predictedWinnerId = winners[pickKey] || null;
+  const predictedScore = winners[scoreKey] || null;
+  
+  // Calculate points if match is played
+  let pointsEarned = 0;
+  let scorePointsEarned = 0;
+  let winnerCorrect = false;
+  let scoreResult = null; // 'exact', 'oneside', or null
+  
+  if (match.status === 'played' && match.winner && predictedWinnerId) {
+    // Winner pick points
+    if (predictedWinnerId === match.winner.id) {
+      winnerCorrect = true;
+      pointsEarned = isKnockout ? roundPoints : 1; // 1 point for rail games
+      
+      // Score prediction points (only if winner correct)
+      if (predictedScore && match.ftScore) {
+        const side1Correct = predictedScore[0] === match.ftScore[0];
+        const side2Correct = predictedScore[1] === match.ftScore[1];
+        const bothCorrect = side1Correct && side2Correct;
+        const oneSideCorrect = (side1Correct || side2Correct) && !bothCorrect;
+        
+        if (bothCorrect) {
+          scoreResult = 'exact';
+          scorePointsEarned = SCORE_EXACT_POINTS;
+        } else if (oneSideCorrect) {
+          scoreResult = 'oneside';
+          scorePointsEarned = SCORE_ONE_SIDE_POINTS;
+        }
+      }
+    }
+  }
+  
+  const predictedWinner = predictedWinnerId ? teamById.get(predictedWinnerId) || null : null;
+
+  return {
+    predictedWinner,
+    predictedScore,
+    pointsEarned,
+    scorePointsEarned,
+    totalPoints: pointsEarned + scorePointsEarned,
+    winnerCorrect,
+    scoreResult,
+    hasPrediction: !!predictedWinnerId,
+    matchPlayed: match.status === 'played'
+  };
+}
+
+/** Small circular badge for points earned — only after match is played */
+function PointsEarnedBadge({ points, isRail = false }) {
+  if (!points || points <= 0) return null;
+
+  return (
+    <span
+      className={[
+        "points-earned-badge",
+        isRail ? "points-earned-badge--rail" : "points-earned-badge--bracket",
+        points >= 10 ? "points-earned-badge--wide" : "",
+      ].join(" ")}
+    >
+      {points}
+    </span>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // SMALL HOOKS
 // ----------------------------------------------------------------------------
@@ -677,10 +769,12 @@ function SFFinalConnector({ active, highlightActive = false }) {
 // ----------------------------------------------------------------------------
 // TEAM ROW — [flag] CODE [verdict] [score]
 // ----------------------------------------------------------------------------
-function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, score, isMatchWinner, align = "left" }) {
+function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, score, predictedScore, isMatchWinner, align = "left" }) {
   const empty = !team;
   const disabled = empty || locked || readOnly;
   const right = align === "right";
+  const displayScore = score != null ? score : predictedScore;
+  const isPredicted = score == null && predictedScore != null;
 
   let strip = "team-strip";
   if (right) strip += " team-strip--right";
@@ -760,16 +854,18 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
         ) : null}
       </span>
 
-      {score != null && (
+      {displayScore != null && (
         <span
           className={[
             "grid h-4 w-4.5 shrink-0 place-items-center rounded-[4px] text-[10.5px] font-extrabold tabular-nums",
-            isMatchWinner
-              ? "bg-[color-mix(in_oklch,var(--pitch)_35%,transparent)] text-[var(--text-primary)]"
-              : "bg-white/[0.07] text-[var(--text-muted)]",
+            isPredicted
+              ? "text-[var(--gold-bright)]"
+              : isMatchWinner
+                ? "bg-[color-mix(in_oklch,var(--pitch)_35%,transparent)] text-[var(--text-primary)]"
+                : "bg-white/[0.07] text-[var(--text-muted)]",
           ].join(" ")}
         >
-          {score}
+          {displayScore}
         </span>
       )}
     </div>
@@ -779,7 +875,7 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
 // ----------------------------------------------------------------------------
 // MATCH CARD (bracket)
 // ----------------------------------------------------------------------------
-function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false, revealGrades = false }) {
+function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false, revealGrades = false, scorePrediction, predictionInfo, viewerName, isViewingOther }) {
   const ready = !!a && !!b;
   const decided = !!winnerId;
 
@@ -809,6 +905,14 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
     showVerdict && winnerId ? (winnerId === actualId ? "correct" : "wrong") : null;
   const actualWinnerIsA = pairIsReal && match.winner && a && match.winner.id === a.id;
   const actualWinnerIsB = pairIsReal && match.winner && b && match.winner.id === b.id;
+
+  const showPredicted = status === "upcoming" && a && b;
+  const effectivePrediction = scorePrediction ?? predictionInfo?.predictedScore ?? null;
+  let predictedA = null;
+  let predictedB = null;
+  if (showPredicted && effectivePrediction) {
+    [predictedA, predictedB] = mapPredictedScores(effectivePrediction, a, b, match);
+  }
 
   const middle = () => {
     if (pairIsReal && status === "live")
@@ -842,6 +946,11 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         pickGrade === "correct" ? "match-ticket--graded-correct" : pickGrade === "wrong" ? "match-ticket--graded-wrong" : "",
       ].join(" ")}
     >
+      {/* Points earned — only after match is played */}
+      {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.totalPoints > 0 && (
+        <PointsEarnedBadge points={predictionInfo.totalPoints} />
+      )}
+
       <TeamRow
         team={a}
         isPicked={decided && winnerId === a?.id}
@@ -852,6 +961,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         locked={!ready}
         readOnly={readOnly}
         score={scoreA}
+        predictedScore={predictedA}
         isMatchWinner={revealGrades && actualWinnerIsA}
         align={align}
       />
@@ -880,6 +990,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         locked={!ready}
         readOnly={readOnly}
         score={scoreB}
+        predictedScore={predictedB}
         isMatchWinner={revealGrades && actualWinnerIsB}
         align={align}
       />
@@ -1199,7 +1310,7 @@ function MatchTeamHeader({ team, refName, won, onFlagClick }) {
   );
 }
 
-function MatchModal({ match, onClose, onFlagClick, scorePrediction, onSaveScorePrediction, canEdit, isViewingSelf, slotKey, isKnockout }) {
+function MatchModal({ match, onClose, onFlagClick, scorePrediction, onSaveScorePrediction, canEdit, isViewingSelf, slotKey, isKnockout, viewerName }) {
   if (!match) return null;
   const played = match.status === "played";
   const live = match.status === "live";
@@ -1282,10 +1393,17 @@ function MatchModal({ match, onClose, onFlagClick, scorePrediction, onSaveScoreP
               >
                 {match.score[0]}–{match.score[1]}
               </motion.div>
+            ) : hasScorePrediction ? (
+              <motion.div
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="font-display text-4xl tracking-widest text-[var(--gold-bright)]"
+              >
+                {predictedScoreDisplay}
+              </motion.div>
             ) : (
-              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">
-                {predictedScoreDisplay ?? "vs"}
-              </div>
+              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">vs</div>
             )}
             {live && (
               <span className="mt-0.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--live)]">
@@ -1385,7 +1503,7 @@ function MatchModal({ match, onClose, onFlagClick, scorePrediction, onSaveScoreP
         {upcoming && !canEditScore && hasScorePrediction && (
           <div className="mx-4 mb-4 rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 p-3 text-center">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--gold-bright)]">
-              Your Prediction: {predictedScoreDisplay}
+              {viewerName ? `${viewerName}'s` : "Their"} prediction: {predictedScoreDisplay}
             </p>
           </div>
         )}
@@ -1883,7 +2001,7 @@ function RailTeamRow({ team, refName, score, predictedScore, isWinner, isPick, p
   );
 }
 
-function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index, isKnockout, onPickWinner, canPick, scorePrediction }) {
+function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index, isKnockout, onPickWinner, canPick, scorePrediction, predictionInfo, viewerName, isViewingOther }) {
   const played = match.status === "played";
   const upcoming = match.status === "upcoming";
   const pickId = pickTeam?.id ?? null;
@@ -1903,6 +2021,8 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
     if (isKnockout || !onPickWinner || !upcoming) return;
     onPickWinner(team.id);
   };
+
+  const effectiveScore = scorePrediction ?? predictionInfo?.predictedScore ?? null;
 
   const footer = () => {
     if (isLive)
@@ -1940,12 +2060,17 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
       whileTap={{ scale: 0.97 }}
       title={pickTeam ? `Your pick: ${pickTeam.name}` : "No pick yet"}
       className={[
-        "rail-card rail-card--compact snap-start",
+        "rail-card rail-card--compact snap-start relative",
         isLive ? "rail-card--live" : isNext ? "rail-card--next" : "",
         pickVerdict === "correct" ? "rail-card--correct" : "",
         pickVerdict === "wrong" ? "rail-card--wrong" : "",
       ].join(" ")}
     >
+      {/* Points earned — score prediction only on rail (bracket points show on bracket cards) */}
+      {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.scorePointsEarned > 0 && (
+        <PointsEarnedBadge points={predictionInfo.scorePointsEarned} isRail />
+      )}
+
       <div className="rail-card__head">
         <span
           className={[
@@ -1962,7 +2087,7 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
         team={match.team1}
         refName={match.ref1}
         score={match.score?.[0]}
-        predictedScore={upcoming && scorePrediction ? scorePrediction[0] : null}
+        predictedScore={upcoming && effectiveScore ? effectiveScore[0] : null}
         isWinner={match.winnerIdx === 0}
         isPick={pickOn1}
         pickVerdict={pickOn1 ? pickVerdict : undefined}
@@ -1973,7 +2098,7 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
         team={match.team2}
         refName={match.ref2}
         score={match.score?.[1]}
-        predictedScore={upcoming && scorePrediction ? scorePrediction[1] : null}
+        predictedScore={upcoming && effectiveScore ? effectiveScore[1] : null}
         isWinner={match.winnerIdx === 1}
         isPick={pickOn2}
         pickVerdict={pickOn2 ? pickVerdict : undefined}
@@ -1996,7 +2121,7 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
   );
 }
 
-function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner }) {
+function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner, byNum, isViewingOther, viewerName, roundPoints }) {
   const scrollRef = useRef(null);
   const anchorRef = useRef(null);
   const anchored = useRef(false);
@@ -2034,11 +2159,20 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
           const actualId = isKnockout
             ? (slotKey ? actual[slotKey] : null)
             : (m.status === "played" && m.winner ? m.winner.id : null);
-          // Get score prediction for this match
-          const scoreKey = isKnockout
-            ? (slotKey ? slotKey + SCORE_SUFFIX : null)
-            : railKey + SCORE_SUFFIX;
-          const scorePrediction = scoreKey ? getScorePrediction(winners, scoreKey.replace(SCORE_SUFFIX, "")) : null;
+          const scorePrediction = isKnockout
+            ? (slotKey ? getScorePrediction(winners, slotKey) : null)
+            : getScorePrediction(winners, railKey);
+
+          // Calculate prediction info for viewing others
+          const predictionInfo = isViewingOther ? getMatchPredictionInfo(
+            winners,
+            m,
+            slotKey,
+            isKnockout,
+            isKnockout ? (roundPoints?.[slotKey] || 1) : 1,
+            teamById,
+            byNum
+          ) : null;
 
           return (
             <React.Fragment key={m.num}>
@@ -2057,6 +2191,9 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
                   onPickWinner={!isKnockout ? (teamId) => onPickRailWinner?.(m.num, teamId, isKnockout) : undefined}
                   canPick={canEdit && !isKnockout}
                   scorePrediction={scorePrediction}
+                  predictionInfo={predictionInfo}
+                  viewerName={viewerName}
+                  isViewingOther={isViewingOther}
                 />
               </div>
             </React.Fragment>
@@ -2349,7 +2486,7 @@ function LoadingScreen() {
 // ----------------------------------------------------------------------------
 // SCROLLABLE BRACKET — left→right, all rounds, horizontal scroll.
 // ----------------------------------------------------------------------------
-function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false, revealGrades = false }) {
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false, revealGrades = false, isViewingOther, viewerName, teamById, byNum }) {
   const round = ROUNDS[roundIdx];
   const rowsPerMatch = BRACKET_ROWS / indices.length;
   return (
@@ -2361,6 +2498,20 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
         {indices.map((m, idx) => {
           const rk = key(round.key, m);
           const rowStart = idx * rowsPerMatch + 1;
+          const match = slotMatches[rk];
+          const scorePrediction = getScorePrediction(winners, rk);
+
+          // Calculate prediction info for viewing others
+          const predictionInfo = isViewingOther ? getMatchPredictionInfo(
+            winners,
+            match ?? { status: "upcoming" },
+            rk,
+            true, // isKnockout
+            round.points,
+            teamById,
+            byNum
+          ) : null;
+
           return (
             <div key={m} className="flex min-h-0 items-center" style={{ gridRow: `${rowStart} / ${rowStart + rowsPerMatch}` }}>
               <MatchCard
@@ -2371,13 +2522,17 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 winnerId={winners[rk]}
                 onPick={onPick}
                 actualId={actual[rk]}
-                match={slotMatches[rk]}
+                match={match}
                 align={align}
                 highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
                 onFlagClick={onFlagClick}
                 onOpenMatch={onOpenMatch}
                 readOnly={readOnly}
                 revealGrades={revealGrades}
+                scorePrediction={scorePrediction}
+                predictionInfo={predictionInfo}
+                viewerName={viewerName}
+                isViewingOther={isViewingOther}
               />
             </div>
           );
@@ -2387,7 +2542,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
   );
 }
 
-function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats }) {
+function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum }) {
   const scrollRef = useRef(null);
   const colRefs = useRef({}); // roundKey → [leftCol, rightCol?]
   const centered = useRef(false);
@@ -2428,7 +2583,7 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
     return Array.from({ length: half }, (_, i) => base + i);
   };
 
-  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats };
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum };
   const highlightConnectors = !readOnly;
 
   return (
@@ -3086,6 +3241,8 @@ export default function App() {
     [friends, actual, slotMatches, byNum]
   );
 
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
+
   const bracketProps = {
     winners: displayWinners,
     teams,
@@ -3098,6 +3255,10 @@ export default function App() {
     onOpenMatch: openMatchBySlot,
     readOnly: !canEdit,
     revealGrades: true, // Always show grading for played matches
+    isViewingOther: !!viewingFriend,
+    viewerName: viewingFriend?.name,
+    teamById,
+    byNum,
   };
   const showBracket = teams.length === 32;
 
@@ -3135,9 +3296,9 @@ export default function App() {
         scorePrediction={matchModal ? (() => {
           const isKnockout = matchModal.isKnockout;
           const key = isKnockout
-            ? (numToSlot.get(matchModal.num) || "")
+            ? numToSlot.get(matchModal.num)
             : `rail-${matchModal.num}`;
-          return getScorePrediction(displayWinners, key);
+          return key ? getScorePrediction(displayWinners, key) : null;
         })() : null}
         onSaveScorePrediction={(score) => {
           if (!matchModal) return;
@@ -3151,6 +3312,7 @@ export default function App() {
         isViewingSelf={!viewingFriend} // Score predictions allowed even when bracket is locked
         slotKey={matchModal ? (matchModal.isKnockout ? numToSlot.get(matchModal.num) : `rail-${matchModal.num}`) : null}
         isKnockout={matchModal?.isKnockout ?? false}
+        viewerName={viewingFriend?.name}
       />
 
       {/* HEADER */}
@@ -3277,6 +3439,15 @@ export default function App() {
               [key]: teamId === prev[key] ? undefined : teamId, // Toggle off if same
             }));
           } : undefined}
+          byNum={byNum}
+          isViewingOther={!!viewingFriend}
+          viewerName={viewingFriend?.name}
+          roundPoints={ROUNDS.reduce((acc, r) => {
+            for (let m = 0; m < r.matches; m++) {
+              acc[key(r.key, m)] = r.points;
+            }
+            return acc;
+          }, {})}
         />
       )}
 
