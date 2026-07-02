@@ -122,7 +122,34 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     return unsub;
   }, [enabled, name]);
 
-  // Debounced Firestore save for the signed-in user's picks.
+  // Ensure a profile doc exists as soon as we have auth + name (not only after pick changes).
+  useEffect(() => {
+    if (!enabled || !uid || !name || viewingFriendUid) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await setDoc(
+          doc(db, PREDICTIONS_COLLECTION, uid),
+          {
+            uid,
+            name,
+            winners: winnersRef.current,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        if (!cancelled) console.error("[WC26] Failed to create/update prediction doc:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, uid, name, viewingFriendUid]);
+
+  // Debounced Firestore save when picks change.
   useEffect(() => {
     if (!enabled || !uid || !name || viewingFriendUid || locked) return;
 
@@ -143,9 +170,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
           },
           { merge: true }
         );
-      } catch {
+      } catch (err) {
         pendingWriteRef.current = null;
         isSavingRef.current = false;
+        console.error("[WC26] Failed to save picks:", err);
       }
     }, SAVE_DEBOUNCE_MS);
 
@@ -158,29 +186,34 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     const trimmed = rawName.trim();
     if (!trimmed) return false;
 
-    writeStoredName(trimmed);
-    setName(trimmed);
-    setNeedsName(false);
+    try {
+      writeStoredName(trimmed);
+      setName(trimmed);
+      setNeedsName(false);
 
-    const credential = await signInAnonymously(auth);
-    const userId = credential.user.uid;
-    setUid(userId);
-    loadedRemoteRef.current = true;
+      const credential = await signInAnonymously(auth);
+      const userId = credential.user.uid;
+      setUid(userId);
+      loadedRemoteRef.current = true;
 
-    const payload = winnersRef.current;
-    pendingWriteRef.current = JSON.stringify(payload);
-    await setDoc(
-      doc(db, PREDICTIONS_COLLECTION, userId),
-      {
-        uid: userId,
-        name: trimmed,
-        winners: payload,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+      const payload = winnersRef.current;
+      pendingWriteRef.current = JSON.stringify(payload);
+      await setDoc(
+        doc(db, PREDICTIONS_COLLECTION, userId),
+        {
+          uid: userId,
+          name: trimmed,
+          winners: payload,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-    return true;
+      return true;
+    } catch (err) {
+      console.error("[WC26] Failed to sign in or save profile:", err);
+      throw err;
+    }
   }, []);
 
   useEffect(() => {
@@ -205,8 +238,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       try {
         const credential = await signInAnonymously(auth);
         setUid(credential.user.uid);
-      } catch {
-        /* auth unavailable — app still works offline via localStorage */
+      } catch (err) {
+        console.error("[WC26] Anonymous sign-in failed — enable it in Firebase Console → Authentication:", err);
       } finally {
         setAuthReady(true);
       }
@@ -232,6 +265,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       await setDoc(
         doc(db, PREDICTIONS_COLLECTION, uid),
         {
+          uid,
+          name,
           locked: true,
           lockedAt: serverTimestamp(),
           winners: payload,
@@ -239,14 +274,17 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         },
         { merge: true }
       );
+      setLocked(true);
+      wasLockedRef.current = true;
       return true;
-    } catch {
+    } catch (err) {
       pendingWriteRef.current = null;
+      console.error("[WC26] Failed to lock picks:", err);
       return false;
     } finally {
       setLocking(false);
     }
-  }, [uid, locked]);
+  }, [uid, locked, name]);
 
   return {
     uid,

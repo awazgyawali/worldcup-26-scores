@@ -1926,8 +1926,13 @@ function FriendsModal({ open, onClose, friends, currentUid, onSelect }) {
 }
 
 function LockConfirmModal({ open, onClose, onConfirm, locking }) {
+  const handleConfirm = async () => {
+    const ok = await onConfirm();
+    if (ok) onClose();
+  };
+
   return (
-    <Modal open={open} onClose={onClose} maxW="max-w-md">
+    <Modal open={open} onClose={locking ? () => {} : onClose} maxW="max-w-md">
       <div className="flex flex-col gap-4 p-6">
         <div>
           <h2 className="font-display text-2xl tracking-wider text-[var(--text-primary)]">Lock your picks?</h2>
@@ -1946,7 +1951,7 @@ function LockConfirmModal({ open, onClose, onConfirm, locking }) {
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={locking}
             className="flex-1 rounded-xl bg-[var(--gold)] px-4 py-3 text-sm font-bold tracking-tight text-[var(--bg-deep)] transition-opacity disabled:opacity-50"
           >
@@ -2096,9 +2101,12 @@ export default function App() {
   }, [locked]);
 
   const handleLock = useCallback(async () => {
-    const ok = await lockPredictions();
-    if (ok) setShowLockConfirm(false);
+    return lockPredictions();
   }, [lockPredictions]);
+
+  useEffect(() => {
+    if (locked) setShowLockConfirm(false);
+  }, [locked]);
 
   const onFlagClick = useCallback((team) => setTeamModal(team), []);
   const openMatchBySlot = useCallback(
