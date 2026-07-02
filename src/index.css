@@ -53,11 +53,37 @@ body {
 
 /* ---------------------------------------------------------------- shell */
 .app-shell {
-  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   background:
     radial-gradient(ellipse 95% 50% at 50% -8%, color-mix(in oklch, var(--pitch) 17%, transparent), transparent 58%),
     radial-gradient(ellipse 65% 38% at 50% 104%, color-mix(in oklch, var(--gold) 7%, transparent), transparent 55%),
     var(--bg-deep);
+}
+
+.app-main {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bracket-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  --bracket-row: max(4.25rem, calc(100% / 8));
+}
+
+.bracket-tree {
+  height: 100%;
+  min-height: 100%;
 }
 
 .app-shell::before {
@@ -82,18 +108,32 @@ body {
 .match-ticket {
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.09) 0%,
-    rgba(255, 255, 255, 0.035) 45%,
-    rgba(255, 255, 255, 0.015) 100%
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.055) 45%,
+    color-mix(in oklch, var(--bg-surface) 88%, transparent) 100%
   );
   backdrop-filter: blur(16px) saturate(1.5);
   -webkit-backdrop-filter: blur(16px) saturate(1.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 0 24px -12px rgba(255, 255, 255, 0.08),
+    inset 0 0 24px -12px rgba(255, 255, 255, 0.06),
     0 10px 28px -14px rgba(0, 0, 0, 0.55);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease, background 0.25s ease;
+}
+
+.match-ticket--readonly {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.07) 45%,
+    color-mix(in oklch, var(--bg-surface) 94%, transparent) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 20px -10px rgba(255, 255, 255, 0.05),
+    0 10px 28px -14px rgba(0, 0, 0, 0.55);
 }
 
 .match-ticket:hover {
@@ -125,6 +165,20 @@ body {
   box-shadow: 0 0 26px -8px color-mix(in oklch, var(--next) 40%, transparent);
 }
 
+.match-ticket--graded-correct {
+  border-color: color-mix(in oklch, var(--pitch-glow) 55%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--pitch-glow) 20%, transparent),
+    0 0 22px -6px color-mix(in oklch, var(--pitch-glow) 35%, transparent);
+}
+
+.match-ticket--graded-wrong {
+  border-color: color-mix(in oklch, var(--wrong) 50%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--wrong) 18%, transparent),
+    0 0 22px -6px color-mix(in oklch, var(--wrong) 30%, transparent);
+}
+
 /* ---------------------------------------------------------------- team row */
 .team-strip {
   border-left: 2px solid transparent;
@@ -133,13 +187,13 @@ body {
 }
 
 .team-strip--winner {
-  border-left-color: var(--pitch-glow);
-  background: color-mix(in oklch, var(--pitch) 16%, transparent);
+  border-left-color: color-mix(in oklch, var(--gold-bright) 50%, transparent);
+  background: color-mix(in oklch, var(--gold) 12%, transparent);
 }
 
 .team-strip--winner.team-strip--right {
   border-left-color: transparent;
-  border-right-color: var(--pitch-glow);
+  border-right-color: color-mix(in oklch, var(--gold-bright) 50%, transparent);
 }
 
 .team-strip--correct {
@@ -153,11 +207,20 @@ body {
 
 .team-strip--wrong {
   border-left-color: var(--wrong);
-  background: color-mix(in oklch, var(--wrong) 8%, transparent);
+  background: color-mix(in oklch, var(--wrong) 14%, transparent);
 }
 .team-strip--wrong.team-strip--right {
   border-left-color: transparent;
   border-right-color: var(--wrong);
+}
+
+.team-strip--missed {
+  border-left-color: color-mix(in oklch, var(--pitch-glow) 70%, transparent);
+  background: color-mix(in oklch, var(--pitch-glow) 8%, transparent);
+}
+.team-strip--missed.team-strip--right {
+  border-left-color: transparent;
+  border-right-color: color-mix(in oklch, var(--pitch-glow) 70%, transparent);
 }
 
 .team-strip:hover:not(:disabled) {
@@ -258,6 +321,21 @@ body {
   border-color: color-mix(in oklch, var(--gold) 38%, transparent);
 }
 
+.header-action--lock:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--gold) 5%, transparent);
+  border-color: color-mix(in oklch, var(--gold) 12%, transparent);
+}
+
+.header-action--lock:disabled:hover {
+  color: var(--text-muted);
+  background: color-mix(in oklch, var(--gold) 5%, transparent);
+  border-color: color-mix(in oklch, var(--gold) 12%, transparent);
+  transform: none;
+}
+
 .header-action--reset {
   color: var(--text-muted);
 }
@@ -298,6 +376,104 @@ body {
 .header-locked svg {
   width: 0.85rem;
   height: 0.85rem;
+}
+
+.viewing-as-picker {
+  display: inline-flex;
+  max-width: min(100%, 16rem);
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in oklch, var(--bg-elevated) 88%, transparent);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.12s ease;
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 5%, transparent);
+}
+
+.viewing-as-picker:hover {
+  background: color-mix(in oklch, var(--pitch) 16%, var(--bg-elevated));
+  border-color: color-mix(in oklch, var(--pitch-glow) 28%, transparent);
+  box-shadow: 0 0 20px color-mix(in oklch, var(--pitch-glow) 10%, transparent);
+}
+
+.viewing-as-picker:active {
+  transform: scale(0.98);
+}
+
+.viewing-as-picker__label {
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.viewing-as-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.viewing-as-picker__name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewing-as-picker__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.viewing-as-picker__status--locked {
+  color: var(--gold-bright);
+}
+
+.viewing-as-picker__status--open {
+  color: var(--pitch-glow);
+}
+
+.viewing-as-picker__status svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.viewing-as-picker__chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+@media (min-width: 640px) {
+  .viewing-as-picker {
+    max-width: 18rem;
+    padding: 0.4rem 1rem;
+  }
+
+  .viewing-as-picker__name {
+    font-size: 0.875rem;
+  }
 }
 
 @media (min-width: 640px) {
@@ -388,7 +564,206 @@ body {
   border-radius: 99px;
 }
 
-/* ---------------------------------------------------------------- games rail */
+/* ---------------------------------------------------------------- predictions rail (bottom) */
+.prediction-rail {
+  flex-shrink: 0;
+  z-index: 30;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklch, var(--bg-mid) 94%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  padding: 0.45rem 0.65rem;
+}
+
+.prediction-rail__scroll {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.1rem 0.15rem;
+  scrollbar-width: none;
+}
+
+.prediction-rail__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-day-chip {
+  display: flex;
+  shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.15rem;
+}
+
+.rail-day-chip span {
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--text-muted) 75%, transparent);
+}
+
+.rail-card--compact {
+  display: flex;
+  width: 7.25rem;
+  shrink: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: 0.65rem;
+  padding: 0.35rem 0.45rem 0.4rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  margin-bottom: 0.05rem;
+}
+
+.rail-card__round {
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--gold-bright) 72%, transparent);
+}
+
+.rail-card__round--live {
+  color: var(--live);
+}
+
+.rail-card__round--next {
+  color: var(--next);
+}
+
+.rail-card__status {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.rail-card__status--live {
+  color: var(--live);
+}
+
+.rail-card__status--next {
+  color: var(--next);
+}
+
+.rail-row {
+  display: grid;
+  grid-template-columns: 1.125rem 1fr auto;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.05rem;
+  border-radius: 0.25rem;
+  padding: 0 0.1rem;
+}
+
+.rail-row--pick {
+  background: color-mix(in oklch, var(--gold) 10%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in oklch, var(--gold) 55%, transparent);
+}
+
+.rail-row--correct {
+  background: color-mix(in oklch, var(--pitch-glow) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--pitch-glow);
+}
+
+.rail-row--wrong {
+  background: color-mix(in oklch, var(--wrong) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--wrong);
+}
+
+.rail-row__flag {
+  height: 0.7rem;
+  width: 1rem;
+  border-radius: 2px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px color-mix(in oklch, black 35%, transparent);
+}
+
+.rail-row__flag--empty {
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, white 6%, transparent);
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.rail-row__code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+}
+
+.rail-row__code--winner {
+  color: var(--pitch-glow);
+}
+
+.rail-row__code--tbd {
+  color: var(--text-muted);
+}
+
+.rail-row--wrong .rail-row__code {
+  text-decoration: line-through;
+  color: var(--wrong);
+}
+
+.rail-row__score {
+  width: 0.85rem;
+  text-align: right;
+  font-size: 0.625rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.rail-row__score--winner {
+  color: var(--text-primary);
+}
+
+.rail-card__pens {
+  margin-top: 0.05rem;
+  font-size: 0.5rem;
+  font-weight: 700;
+  color: var(--gold-bright);
+}
+
+.rail-card__pick-hint {
+  margin-top: 0.05rem;
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold-bright);
+}
+
+.rail-card--correct {
+  border-color: color-mix(in oklch, var(--pitch-glow) 42%, transparent);
+}
+
+.rail-card--wrong {
+  border-color: color-mix(in oklch, var(--wrong) 42%, transparent);
+}
+
+/* ---------------------------------------------------------------- games rail (legacy) */
 .edge-fade-x {
   mask-image: linear-gradient(to right, transparent, black 2.5%, black 97.5%, transparent);
 }
@@ -423,7 +798,181 @@ body {
   box-shadow: 0 0 24px -8px color-mix(in oklch, var(--next) 45%, transparent);
 }
 
-/* round jump pills */
+/* points pill + compact popover */
+.points-podium {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.15rem;
+}
+
+.points-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--gold) 28%, transparent);
+  background: color-mix(in oklch, var(--gold) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.points-pill:hover {
+  background: color-mix(in oklch, var(--gold) 16%, transparent);
+  border-color: color-mix(in oklch, var(--gold) 42%, transparent);
+  color: var(--text-primary);
+}
+
+.points-pill:active {
+  transform: scale(0.98);
+}
+
+.points-pill__label {
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.points-pill__value {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--gold-bright);
+}
+
+.points-pill__chevron {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.points-popover {
+  position: absolute;
+  z-index: 50;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  box-shadow: 0 14px 40px color-mix(in oklch, black 50%, transparent);
+}
+
+.points-popover--compact {
+  left: 50%;
+  top: calc(100% + 0.35rem);
+  width: 15.5rem;
+  transform: translateX(-50%);
+}
+
+.points-podium .points-popover--compact {
+  z-index: 45;
+}
+
+.points-popover__hint {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.points-popover__list {
+  margin: 0;
+  list-style: none;
+  padding: 0.25rem;
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
+}
+
+.points-popover__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.45rem;
+}
+
+.points-popover__row:hover {
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+}
+
+.points-popover__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 0.7rem;
+  background: color-mix(in oklch, var(--gold) 8%, transparent);
+}
+
+/* legacy points bar — removed from UI */
+.points-bar {
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--bg-surface) 82%, transparent);
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.points-bar:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in oklch, var(--bg-elevated) 90%, transparent);
+}
+
+.points-popover {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: calc(100% + 0.35rem);
+  z-index: 35;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  box-shadow: 0 18px 48px color-mix(in oklch, black 45%, transparent);
+}
+
+.points-popover__header {
+  border-bottom: 1px solid var(--border);
+  padding: 0.85rem 1rem;
+}
+
+.points-popover__list {
+  margin: 0;
+  list-style: none;
+  padding: 0.35rem;
+  max-height: min(52vh, 360px);
+  overflow-y: auto;
+}
+
+.points-popover__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.points-popover__row:hover {
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+}
+
+.points-popover__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  background: color-mix(in oklch, var(--gold) 8%, transparent);
+}
+
+/* round jump pills — legacy, kept for reference */
 .round-pill {
   border: 1px solid var(--border);
   background: color-mix(in oklch, var(--bg-surface) 80%, transparent);

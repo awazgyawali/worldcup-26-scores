@@ -46,6 +46,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const wasLockedRef = useRef(false);
   const pendingWriteRef = useRef(null);
   const isSavingRef = useRef(false);
+  const lockingRef = useRef(false);
+  const lockedRef = useRef(false);
   const winnersRef = useRef(winners);
   const uidRef = useRef(uid);
   const viewingFriendUidRef = useRef(viewingFriendUid);
@@ -80,7 +82,13 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         }
 
         const isLocked = self.locked;
-        setLocked(isLocked);
+        if (isLocked) {
+          lockedRef.current = true;
+          setLocked(true);
+        } else if (!lockingRef.current) {
+          lockedRef.current = false;
+          setLocked(false);
+        }
 
         if (self.name && self.name !== name) {
           setName(self.name);
@@ -103,18 +111,22 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
           !isEcho &&
           !isSavingRef.current &&
           (isLocked ||
+            lockedRef.current ||
             !loadedRemoteRef.current ||
             (wasLockedRef.current && !isLocked) ||
             remoteJson !== JSON.stringify(winnersRef.current));
 
         if (shouldSyncSelf) {
           const force =
-            isLocked || (wasLockedRef.current && !isLocked) || loadedRemoteRef.current;
+            isLocked ||
+            lockedRef.current ||
+            (wasLockedRef.current && !isLocked) ||
+            loadedRemoteRef.current;
           onRemoteWinnersRef.current?.(remoteWinners, { force });
         }
 
         loadedRemoteRef.current = true;
-        wasLockedRef.current = isLocked;
+        wasLockedRef.current = isLocked || lockedRef.current;
       },
       () => setFriends([])
     );
@@ -124,7 +136,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
   // Ensure a profile doc exists as soon as we have auth + name (not only after pick changes).
   useEffect(() => {
-    if (!enabled || !uid || !name || viewingFriendUid) return;
+    if (!enabled || !uid || !name || viewingFriendUid || lockedRef.current) return;
 
     let cancelled = false;
     (async () => {
@@ -151,7 +163,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
   // Debounced Firestore save when picks change.
   useEffect(() => {
-    if (!enabled || !uid || !name || viewingFriendUid || locked) return;
+    if (!enabled || !uid || !name || viewingFriendUid || locked || lockedRef.current) return;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     isSavingRef.current = true;
@@ -257,7 +269,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   }, []);
 
   const lockPredictions = useCallback(async () => {
-    if (!uid || locked) return false;
+    if (!uid || locked || lockedRef.current) return false;
+    lockingRef.current = true;
+    lockedRef.current = true;
+    setLocked(true);
     setLocking(true);
     try {
       const payload = winnersRef.current;
@@ -274,14 +289,17 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         },
         { merge: true }
       );
-      setLocked(true);
       wasLockedRef.current = true;
       return true;
     } catch (err) {
       pendingWriteRef.current = null;
+      lockingRef.current = false;
+      lockedRef.current = false;
+      setLocked(false);
       console.error("[WC26] Failed to lock picks:", err);
       return false;
     } finally {
+      lockingRef.current = false;
       setLocking(false);
     }
   }, [uid, locked, name]);

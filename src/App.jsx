@@ -8,8 +8,7 @@ import { usePredictions } from "./hooks/usePredictions";
  *  number (73–104), so live scores, goal scorers, venues, extra time and
  *  penalty shootouts all attach exactly where they belong.
  *
- *  Layout: a linear, chronological games rail up top + a horizontally
- *  scrollable left→right bracket with round-jump navigation.
+ *  Layout: bracket + compact predictions ticker at the bottom.
  * ==========================================================================*/
 
 // ----------------------------------------------------------------------------
@@ -117,7 +116,17 @@ const ROUNDS = [
 const FINAL_ROUND = ROUNDS.length - 1;
 const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 3, num: 103 };
 const key = (r, m) => `${r}-${m}`;
-/** Rows per bracket half — the tree converges from both sides into the final. */
+/** Every knockout slot the user must fill before locking. */
+const REQUIRED_PICK_KEYS = [
+  ...ROUNDS.flatMap((r) => Array.from({ length: r.matches }, (_, m) => key(r.key, m))),
+  "third-0",
+];
+const TOTAL_REQUIRED_PICKS = REQUIRED_PICK_KEYS.length;
+
+function getPickProgress(winners) {
+  const filled = REQUIRED_PICK_KEYS.filter((k) => winners[k]).length;
+  return { filled, total: TOTAL_REQUIRED_PICKS, complete: filled === TOTAL_REQUIRED_PICKS };
+}
 const BRACKET_ROWS = 8;
 
 const ROUND_LABEL = {
@@ -369,8 +378,8 @@ const flagSrcSet = (iso2) =>
 // PREDICTION LOGIC
 // ----------------------------------------------------------------------------
 const STORAGE_KEY = "wc26-bracket-winners-v4";
-const ACCENT = "#4ade80";
-const ACCENT_DIM = "rgba(100, 118, 140, 0.35)";
+const CONNECTOR_STROKE = "rgba(100, 118, 140, 0.18)";
+const CONNECTOR_STROKE_ACTIVE = "rgba(100, 118, 140, 0.32)";
 
 function getMatchTeams(roundIdx, matchIdx, winners, teams) {
   if (!teams?.length) return [null, null];
@@ -430,27 +439,31 @@ const buildSlotMatches = (byNum) => {
   return map;
 };
 
-/** slot key → actual winning team id (only for decided matches). */
+/** slot key → actual winning team id (only for finished matches). */
 const buildActual = (slotMatches) => {
   const actual = {};
   for (const [k, m] of Object.entries(slotMatches)) {
-    if (m.winner) actual[k] = m.winner.id;
+    if (m.status === "played" && m.winner) actual[k] = m.winner.id;
   }
   return actual;
 };
 
-/** Grade a winners map against decided results. */
+/** Grade picks — points only for finished matches where the user made a pick. */
 function gradeWinners(winners, actual) {
   const byRound = {};
   let correct = 0,
     total = 0,
-    points = 0;
+    points = 0,
+    played = 0;
   for (const r of [...ROUNDS, THIRD_PLACE]) {
-    byRound[r.key] = { correct: 0, total: 0 };
+    byRound[r.key] = { correct: 0, total: 0, played: 0 };
     const count = r.matches ?? 1;
     for (let m = 0; m < count; m++) {
       const k = key(r.key, m);
-      if (!actual[k] || !winners[k]) continue;
+      if (!actual[k]) continue;
+      byRound[r.key].played++;
+      played++;
+      if (!winners[k]) continue;
       byRound[r.key].total++;
       total++;
       if (actual[k] === winners[k]) {
@@ -460,7 +473,7 @@ function gradeWinners(winners, actual) {
       }
     }
   }
-  return { correct, total, points, byRound };
+  return { correct, total, points, played, byRound };
 }
 
 // ----------------------------------------------------------------------------
@@ -532,8 +545,8 @@ function Connector({ count, side = "left", active }) {
         key={i}
         d={d}
         fill="none"
-        strokeWidth={active?.[i] ? 2 : 1.25}
-        stroke={active?.[i] ? ACCENT : ACCENT_DIM}
+        strokeWidth={active?.[i] ? 1.5 : 1}
+        stroke={active?.[i] ? CONNECTOR_STROKE_ACTIVE : CONNECTOR_STROKE}
         vectorEffect="non-scaling-stroke"
         style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
       />
@@ -556,8 +569,8 @@ function SFFinalConnector({ active }) {
         <path
           d="M0,50 H100"
           fill="none"
-          strokeWidth={active ? 2 : 1.25}
-          stroke={active ? ACCENT : ACCENT_DIM}
+          strokeWidth={active ? 1.5 : 1}
+          stroke={active ? CONNECTOR_STROKE_ACTIVE : CONNECTOR_STROKE}
           vectorEffect="non-scaling-stroke"
           style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
         />
@@ -584,6 +597,7 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
     strip += " team-strip--wrong";
     text = "text-[var(--wrong)] line-through decoration-[var(--wrong)]/60";
   } else if (verdict === "missed") {
+    strip += " team-strip--missed";
     text = "text-[var(--pitch-glow)]/85 font-semibold";
   } else if (isPicked) {
     strip += " team-strip--winner";
@@ -599,13 +613,19 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
       onClick={() => !disabled && onPick(team)}
       onKeyDown={(e) => !disabled && e.key === "Enter" && onPick(team)}
       title={
-        empty ? undefined : readOnly ? "Shared bracket — view only" : locked ? "Both teams must be decided first" : `Advance ${team.name}`
+        empty
+          ? undefined
+          : readOnly
+            ? "Picks are read-only"
+            : locked
+              ? "Both teams must be decided first"
+              : `Advance ${team.name}`
       }
       className={[
         "group/row relative flex h-[22px] w-full items-center gap-1.5 rounded-sm px-1.5 transition-all duration-200",
         right ? "flex-row-reverse text-right" : "text-left",
         strip,
-        empty ? "cursor-default" : locked || readOnly ? "cursor-not-allowed opacity-55" : "cursor-pointer",
+        empty ? "cursor-default" : locked || readOnly ? "cursor-default" : "cursor-pointer",
       ].join(" ")}
     >
       {empty ? (
@@ -664,7 +684,7 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
 // ----------------------------------------------------------------------------
 // MATCH CARD (bracket)
 // ----------------------------------------------------------------------------
-function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false }) {
+function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false, revealGrades = false }) {
   const ready = !!a && !!b;
   const decided = !!winnerId;
 
@@ -682,13 +702,16 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
   }
 
   const status = match?.status;
-  const graded = !!actualId;
+  const resultReady = !!actualId;
+  const showVerdict = revealGrades && resultReady;
   const verdictFor = (team) => {
-    if (!graded || !team) return undefined;
+    if (!showVerdict || !team) return undefined;
     if (winnerId === team.id) return team.id === actualId ? "correct" : "wrong";
     if (team.id === actualId && winnerId) return "missed";
     return undefined;
   };
+  const pickGrade =
+    showVerdict && winnerId ? (winnerId === actualId ? "correct" : "wrong") : null;
   const actualWinnerIsA = pairIsReal && match.winner && a && match.winner.id === a.id;
   const actualWinnerIsB = pairIsReal && match.winner && b && match.winner.id === b.id;
 
@@ -719,7 +742,9 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
       transition={{ duration: 0.25 }}
       className={[
         "match-ticket relative flex w-full shrink-0 flex-col justify-center rounded-lg p-[5px]",
+        readOnly ? "match-ticket--readonly" : "",
         highlight === "live" ? "match-ticket--live" : highlight === "next" ? "match-ticket--next" : "",
+        pickGrade === "correct" ? "match-ticket--graded-correct" : pickGrade === "wrong" ? "match-ticket--graded-wrong" : "",
       ].join(" ")}
     >
       <TeamRow
@@ -732,7 +757,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         locked={!ready}
         readOnly={readOnly}
         score={scoreA}
-        isMatchWinner={actualWinnerIsA}
+        isMatchWinner={revealGrades && actualWinnerIsA}
         align={align}
       />
 
@@ -760,7 +785,7 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
         locked={!ready}
         readOnly={readOnly}
         score={scoreB}
-        isMatchWinner={actualWinnerIsB}
+        isMatchWinner={revealGrades && actualWinnerIsB}
         align={align}
       />
     </motion.div>
@@ -872,7 +897,7 @@ function ChampionBox({ champion, isActual }) {
   );
 }
 
-function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, readOnly = false }) {
+function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, readOnly = false, revealGrades = false }) {
   const rk = "third-0";
   const match = slotMatches[rk];
   // Real fixture teams beat the predicted ones once semis are actually played.
@@ -898,16 +923,20 @@ function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagCli
         onFlagClick={onFlagClick}
         onOpenMatch={onOpenMatch}
         readOnly={readOnly}
+        revealGrades={revealGrades}
       />
     </div>
   );
 }
 
-/** Last bracket column: trophy → final → champion → third place. */
-function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false }) {
+/** Last bracket column: points → trophy → final → champion → third place. */
+function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats }) {
   const rk = key("final", 0);
   return (
     <div className="flex h-full w-[calc(var(--match-card-w)+1.5rem)] shrink-0 flex-col items-center justify-center gap-2.5 self-stretch px-3">
+      <div className="points-podium">
+        <PointsPill stats={stats} />
+      </div>
       <TrophyMark champion={champion || actualChampion} />
       <div className="rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-3 py-0.5 text-[8.5px] font-black uppercase tracking-[0.22em] text-[#1a1305] shadow-[0_0_18px_-4px_rgba(245,205,110,0.5)]">
         Final
@@ -926,6 +955,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           onFlagClick={onFlagClick}
           onOpenMatch={onOpenMatch}
           readOnly={readOnly}
+          revealGrades={revealGrades}
         />
       </div>
       <ChampionBox champion={actualChampion || champion} isActual={!!actualChampion} />
@@ -941,6 +971,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           liveKey={liveKey}
           nextKey={nextKey}
           readOnly={readOnly}
+          revealGrades={revealGrades}
         />
       </div>
     </div>
@@ -1289,41 +1320,55 @@ function TeamModal({ team, journey, onClose, onOpenMatch }) {
 }
 
 // ----------------------------------------------------------------------------
-// GAMES RAIL — every knockout fixture, linear & chronological, up top.
+// PREDICTIONS RAIL — compact games cards at the bottom.
 // ----------------------------------------------------------------------------
-function RailTeamRow({ team, refName, score, isWinner }) {
+function RailTeamRow({ team, refName, score, isWinner, isPick, pickVerdict }) {
   return (
-    <div className="grid h-[20px] grid-cols-[22px_1fr_auto] items-center gap-1.5">
+    <div
+      className={[
+        "rail-row",
+        isPick ? "rail-row--pick" : "",
+        pickVerdict === "correct" ? "rail-row--correct" : "",
+        pickVerdict === "wrong" ? "rail-row--wrong" : "",
+      ].join(" ")}
+    >
       {team ? (
-        <img src={flagSrc(team.iso2, 40)} alt="" className="h-3.5 w-[22px] rounded-[3px] object-cover ring-1 ring-black/30" />
+        <img src={flagSrc(team.iso2, 40)} alt="" className="rail-row__flag" />
       ) : (
-        <span className="grid h-3.5 w-[22px] place-items-center rounded-[3px] bg-white/[0.06] text-[8px] font-bold text-[var(--text-muted)] ring-1 ring-white/10">·</span>
+        <span className="rail-row__flag rail-row__flag--empty">·</span>
       )}
       <span
         className={[
-          "truncate text-[11.5px] font-bold tracking-wide",
-          isWinner ? "text-[var(--pitch-glow)]" : team ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]",
+          "rail-row__code",
+          isWinner ? "rail-row__code--winner" : team ? "" : "rail-row__code--tbd",
         ].join(" ")}
       >
         {team ? team.code : isRef(refName) ? `${refName[0] === "W" ? "W" : "L"}·M${refName.slice(1)}` : "TBD"}
       </span>
-      <span
-        className={[
-          "w-4 text-right text-[12px] font-extrabold tabular-nums",
-          isWinner ? "text-[var(--text-primary)]" : "text-[var(--text-muted)]",
-        ].join(" ")}
-      >
+      <span className={["rail-row__score", isWinner ? "rail-row__score--winner" : ""].join(" ")}>
         {score != null ? score : ""}
       </span>
     </div>
   );
 }
 
-function RailCard({ match, isLive, isNext, onClick, index }) {
+function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index }) {
+  const played = match.status === "played";
+  const pickId = pickTeam?.id ?? null;
+  const actualId = actualTeam?.id ?? null;
+  const pickOn1 = !!pickId && match.team1?.id === pickId;
+  const pickOn2 = !!pickId && match.team2?.id === pickId;
+  const pickInMatch = pickOn1 || pickOn2;
+
+  let pickVerdict;
+  if (revealGrades && played && pickId && actualId) {
+    pickVerdict = pickId === actualId ? "correct" : "wrong";
+  }
+
   const footer = () => {
     if (isLive)
       return (
-        <span className="flex items-center gap-1 text-[8.5px] font-black uppercase tracking-[0.14em] text-[var(--live)]">
+        <span className="rail-card__status rail-card__status--live">
           <span className="relative flex h-1.5 w-1.5">
             <span className="live-ping absolute h-full w-full rounded-full bg-[var(--live)]" />
             <span className="live-dot h-full w-full rounded-full bg-[var(--live)]" />
@@ -1331,20 +1376,16 @@ function RailCard({ match, isLive, isNext, onClick, index }) {
           Live {liveMinute(match.kickoff)}
         </span>
       );
-    if (match.status === "played")
-      return (
-        <span className="text-[8.5px] font-black uppercase tracking-[0.12em] text-[var(--text-muted)]">
-          {phaseLabel(match)}
-        </span>
-      );
+    if (played)
+      return <span className="rail-card__status">{phaseLabel(match)}</span>;
     if (isNext && match.kickoff)
       return (
-        <span className="text-[8.5px] font-black uppercase tracking-[0.1em] text-[var(--next)]">
+        <span className="rail-card__status rail-card__status--next">
           in {fmtCountdown(match.kickoff.getTime() - Date.now())}
         </span>
       );
     return (
-      <span className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+      <span className="rail-card__status">
         {match.kickoff ? fmtTimeOnly(match.kickoff) : "TBD"}
       </span>
     );
@@ -1354,41 +1395,67 @@ function RailCard({ match, isLive, isNext, onClick, index }) {
     <motion.button
       type="button"
       onClick={onClick}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index * 0.03, 0.5), duration: 0.3 }}
-      whileTap={{ scale: 0.96 }}
+      transition={{ delay: Math.min(index * 0.02, 0.35), duration: 0.25 }}
+      whileTap={{ scale: 0.97 }}
+      title={pickTeam ? `Your pick: ${pickTeam.name}` : "No pick yet"}
       className={[
-        "rail-card flex w-[9.5rem] shrink-0 snap-start flex-col gap-0.5 rounded-xl px-2.5 py-2 text-left",
+        "rail-card rail-card--compact snap-start",
         isLive ? "rail-card--live" : isNext ? "rail-card--next" : "",
+        pickVerdict === "correct" ? "rail-card--correct" : "",
+        pickVerdict === "wrong" ? "rail-card--wrong" : "",
       ].join(" ")}
     >
-      <div className="mb-0.5 flex items-center justify-between">
+      <div className="rail-card__head">
         <span
           className={[
-            "text-[8px] font-black uppercase tracking-[0.16em]",
-            isLive ? "text-[var(--live)]" : isNext ? "text-[var(--next)]" : "text-[var(--gold-bright)]/70",
+            "rail-card__round",
+            isLive ? "rail-card__round--live" : isNext ? "rail-card__round--next" : "",
           ].join(" ")}
         >
           {ROUND_SHORT[match.round] || match.roundLabel}
         </span>
         {footer()}
       </div>
-      <RailTeamRow team={match.team1} refName={match.ref1} score={match.score?.[0]} isWinner={match.winnerIdx === 0} />
-      <RailTeamRow team={match.team2} refName={match.ref2} score={match.score?.[1]} isWinner={match.winnerIdx === 1} />
+
+      <RailTeamRow
+        team={match.team1}
+        refName={match.ref1}
+        score={match.score?.[0]}
+        isWinner={match.winnerIdx === 0}
+        isPick={pickOn1}
+        pickVerdict={pickOn1 ? pickVerdict : undefined}
+      />
+      <RailTeamRow
+        team={match.team2}
+        refName={match.ref2}
+        score={match.score?.[1]}
+        isWinner={match.winnerIdx === 1}
+        isPick={pickOn2}
+        pickVerdict={pickOn2 ? pickVerdict : undefined}
+      />
+
       {match.pens && (
-        <span className="mt-0.5 text-[8.5px] font-bold text-[var(--gold-bright)]">
+        <span className="rail-card__pens">
           pens {match.pens[0]}–{match.pens[1]}
+        </span>
+      )}
+
+      {pickTeam && !pickInMatch && (
+        <span className="rail-card__pick-hint">
+          Pick: {pickTeam.code}
         </span>
       )}
     </motion.button>
   );
 }
 
-function GamesRail({ matches, liveNums, nextNum, onOpenMatch }) {
+function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch }) {
   const scrollRef = useRef(null);
   const anchorRef = useRef(null);
   const anchored = useRef(false);
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
 
   useEffect(() => {
     if (anchored.current || !anchorRef.current || !scrollRef.current) return;
@@ -1401,30 +1468,33 @@ function GamesRail({ matches, liveNums, nextNum, onOpenMatch }) {
   let lastDate = null;
 
   return (
-    <div className="border-b border-[var(--border)] bg-[var(--bg-mid)]/55">
-      <div
-        ref={scrollRef}
-        className="ticker-scroll edge-fade-x mx-auto flex max-w-[1900px] snap-x items-stretch gap-2 overflow-x-auto px-5 py-2.5"
-      >
+    <div className="prediction-rail">
+      <div ref={scrollRef} className="prediction-rail__scroll ticker-scroll edge-fade-x snap-x">
         {matches.map((m, i) => {
           const dayChip =
             m.date !== lastDate && m.kickoff ? (
-              <div key={`day-${m.date}`} className="flex shrink-0 flex-col items-center justify-center px-1">
-                <span className="[writing-mode:vertical-rl] rotate-180 text-[8px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]/70">
-                  {fmtDay(m.kickoff)}
-                </span>
+              <div key={`day-${m.date}`} className="rail-day-chip">
+                <span>{fmtDay(m.kickoff)}</span>
               </div>
             ) : null;
           lastDate = m.date;
+
+          const slotKey = numToSlot.get(m.num);
+          const pickId = slotKey ? winners[slotKey] : null;
+          const actualId = slotKey ? actual[slotKey] : null;
+
           return (
             <React.Fragment key={m.num}>
               {dayChip}
-              <div ref={m.num === anchorNum ? anchorRef : undefined} className="flex">
+              <div ref={m.num === anchorNum ? anchorRef : undefined} className="shrink-0">
                 <RailCard
                   match={m}
                   index={i}
+                  pickTeam={pickId ? teamById.get(pickId) ?? null : null}
+                  actualTeam={actualId ? teamById.get(actualId) ?? null : null}
                   isLive={liveNums.includes(m.num)}
                   isNext={m.num === nextNum}
+                  revealGrades={revealGrades}
                   onClick={() => onOpenMatch(m)}
                 />
               </div>
@@ -1477,126 +1547,146 @@ function IconUser({ className = "" }) {
   );
 }
 
-function HeaderToolbar({
-  viewingFriend,
-  locked,
-  onExitFriendView,
-  onOpenFriends,
-  onOpenLock,
-  onReset,
-}) {
+function IconChevronDown({ className = "" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function ViewingAsPicker({ name, isLocked, onClick, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="viewing-as-picker disabled:cursor-not-allowed disabled:opacity-50"
+      title="Tap to switch whose bracket you are viewing"
+    >
+      <span className="viewing-as-picker__label">Viewing as</span>
+      <span className="viewing-as-picker__row">
+        <span className="viewing-as-picker__name">{name}</span>
+        <span className={["viewing-as-picker__status", isLocked ? "viewing-as-picker__status--locked" : "viewing-as-picker__status--open"].join(" ")}>
+          {isLocked ? (
+            <>
+              <IconLock />
+              Locked
+            </>
+          ) : (
+            <>Open</>
+          )}
+        </span>
+        <IconChevronDown className="viewing-as-picker__chevron" />
+      </span>
+    </button>
+  );
+}
+
+function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onOpenLock, onReset }) {
+  if (!isViewingSelf) return null;
+
   return (
     <div className="header-toolbar">
-      {viewingFriend ? (
+      {locked ? (
+        <span className="header-locked" title="Your picks are locked">
+          <IconLock />
+          <span className="hidden sm:inline">Locked</span>
+        </span>
+      ) : (
         <button
           type="button"
-          onClick={onExitFriendView}
-          className="header-action header-action--primary"
-          title="Return to your bracket"
+          onClick={onOpenLock}
+          disabled={!canLock}
+          className="header-action header-action--lock w-8 px-0 sm:w-auto sm:px-3 disabled:cursor-not-allowed disabled:opacity-45"
+          title={lockTooltip}
         >
-          <IconUser />
-          <span className="hidden sm:inline">My picks</span>
+          <IconLock />
+          <span className="hidden sm:inline">Lock</span>
         </button>
-      ) : (
-        <>
-          {locked ? (
-            <span className="header-locked" title="Your picks are locked">
-              <IconLock />
-              <span className="hidden sm:inline">Locked</span>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenLock}
-              className="header-action header-action--lock w-8 px-0 sm:w-auto sm:px-3"
-              title="Lock your picks permanently"
-            >
-              <IconLock />
-              <span className="hidden sm:inline">Lock</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onOpenFriends}
-            className="header-action header-action--friends w-8 px-0 sm:w-auto sm:px-3"
-            title="View friends' predictions"
-          >
-            <IconUsers />
-            <span className="hidden sm:inline">Friends</span>
-          </button>
-          {!locked && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="header-action header-action--reset w-8 px-0 sm:w-auto sm:px-3"
-              title="Clear all predictions"
-            >
-              <IconReset />
-              <span className="hidden sm:inline">Reset</span>
-            </button>
-          )}
-        </>
+      )}
+      {!locked && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="header-action header-action--reset w-8 px-0 sm:w-auto sm:px-3"
+          title="Clear all predictions"
+        >
+          <IconReset />
+          <span className="hidden sm:inline">Reset</span>
+        </button>
       )}
     </div>
   );
 }
 
 // ----------------------------------------------------------------------------
-// SCORE HUD — prediction points, always visible in the header.
+// POINTS PILL — centered above the final column + compact popover.
 // ----------------------------------------------------------------------------
-function ScoreHUD({ stats }) {
+function PointsPill({ stats }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
   const points = useCountUp(stats.points);
-  const pct = stats.total ? Math.round((stats.correct / stats.total) * 100) : null;
+  const rounds = [...ROUNDS, THIRD_PLACE];
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    const onClick = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 rounded-full bg-[var(--gold)]/12 px-3 py-1 ring-1 ring-[var(--gold)]/30">
-        <span className="text-[9px] font-black uppercase tracking-[0.14em] text-[var(--gold-bright)]/80">pts</span>
-        <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{points}</span>
-      </div>
-      {pct != null && (
-        <div
-          className="hidden items-center gap-1.5 rounded-full bg-white/[0.04] px-3 py-1 ring-1 ring-[var(--border)] sm:flex"
-          title={`${stats.correct} of ${stats.total} graded picks correct`}
-        >
-          <span className="text-[9px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">acc</span>
-          <span className={["font-display text-lg leading-none tracking-wider", pct >= 60 ? "text-[var(--pitch-glow)]" : "text-[var(--text-secondary)]"].join(" ")}>
-            {pct}%
-          </span>
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="points-pill"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title="Tap for points breakdown"
+      >
+        <span className="points-pill__label">Points:</span>
+        <span className="points-pill__value">{points}</span>
+        <IconChevronDown className={["points-pill__chevron", open ? "rotate-180" : ""].join(" ")} />
+      </button>
+
+      {open && (
+        <div className="points-popover points-popover--compact" role="dialog" aria-label="Points breakdown">
+          <p className="points-popover__hint">Finished matches only · later rounds worth more</p>
+          <ul className="points-popover__list">
+            {rounds.map((r) => {
+              const s = stats.byRound[r.key] ?? { correct: 0, total: 0, played: 0 };
+              const earned = s.correct * r.points;
+              return (
+                <li key={r.key} className="points-popover__row">
+                  <div className="min-w-0">
+                    <div className="text-[10.5px] font-bold text-[var(--text-primary)]">{r.short}</div>
+                    <div className="text-[9px] text-[var(--text-muted)]">{r.points}pt · {s.played}/{r.matches ?? 1} done</div>
+                  </div>
+                  <div className="text-right">
+                    <div className={["text-[10px] font-black tabular-nums", s.total > 0 && s.correct === s.total ? "text-[var(--pitch-glow)]" : "text-[var(--text-muted)]"].join(" ")}>
+                      {s.total > 0 ? `${s.correct}/${s.total}` : "—"}
+                    </div>
+                    <div className="font-display text-sm leading-none tracking-wider text-[var(--gold-bright)]">{earned}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="points-popover__total">
+            <span className="text-[9px] font-black uppercase tracking-[0.1em] text-[var(--text-muted)]">Total</span>
+            <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{stats.points}</span>
+          </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------------------
-// ROUND NAV — jump pills for the scrollable bracket.
-// ----------------------------------------------------------------------------
-function RoundNav({ activeRound, onJump, stats, liveRoundKey }) {
-  return (
-    <div className="mx-auto flex max-w-[1900px] flex-wrap items-center gap-1.5 px-4 py-2">
-      {ROUNDS.map((r) => {
-        const s = stats.byRound[r.key];
-        return (
-          <button
-            key={r.key}
-            type="button"
-            onClick={() => onJump(r.key)}
-            className={[
-              "round-pill flex items-center gap-1.5 rounded-full px-3 py-1 text-[10.5px] font-bold text-[var(--text-secondary)]",
-              activeRound === r.key ? "round-pill--active" : "",
-            ].join(" ")}
-          >
-            {liveRoundKey === r.key && <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" />}
-            {r.label}
-            <span className="text-[9px] font-black text-[var(--text-muted)]">{r.points}pt</span>
-            {s?.total > 0 && (
-              <span className={["text-[9px] font-black", s.correct === s.total ? "text-[var(--pitch-glow)]" : "text-[var(--text-muted)]"].join(" ")}>
-                {s.correct}/{s.total}✓
-              </span>
-            )}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1606,12 +1696,7 @@ function RoundNav({ activeRound, onJump, stats, liveRoundKey }) {
 // ----------------------------------------------------------------------------
 function LoadingScreen() {
   return (
-    <div className="flex min-h-[70vh] flex-col items-center gap-8 px-6 pt-6">
-      <div className="ticker-scroll edge-fade-x flex w-full max-w-4xl gap-2 overflow-hidden">
-        {Array.from({ length: 8 }, (_, i) => (
-          <div key={i} className="skeleton h-16 w-[9.5rem] shrink-0 rounded-xl" style={{ animationDelay: `${i * 0.08}s` }} />
-        ))}
-      </div>
+    <div className="flex h-full min-h-0 flex-1 flex-col items-center justify-between gap-8 px-6 pt-6 pb-4">
       <div className="flex flex-col items-center gap-3 pt-10">
         <div className="relative flex flex-col items-center">
           <span className="ball-bounce text-4xl">⚽</span>
@@ -1634,6 +1719,11 @@ function LoadingScreen() {
           </div>
         ))}
       </div>
+      <div className="ticker-scroll edge-fade-x flex w-full max-w-4xl gap-1.5 overflow-hidden">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div key={i} className="skeleton h-[3.75rem] w-[7.25rem] shrink-0 rounded-lg" style={{ animationDelay: `${i * 0.05}s` }} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1641,14 +1731,14 @@ function LoadingScreen() {
 // ----------------------------------------------------------------------------
 // SCROLLABLE BRACKET — left→right, all rounds, horizontal scroll.
 // ----------------------------------------------------------------------------
-function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false }) {
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false, revealGrades = false }) {
   const round = ROUNDS[roundIdx];
   const rowsPerMatch = BRACKET_ROWS / indices.length;
   return (
     <div ref={colRef} className="flex h-full w-[var(--match-card-w)] shrink-0 flex-col self-stretch">
       <div
         className="grid h-full min-h-0 flex-1"
-        style={{ gridTemplateRows: `repeat(${BRACKET_ROWS}, var(--bracket-row))` }}
+        style={{ gridTemplateRows: `repeat(${BRACKET_ROWS}, minmax(0, 1fr))` }}
       >
         {indices.map((m, idx) => {
           const rk = key(round.key, m);
@@ -1669,6 +1759,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 onFlagClick={onFlagClick}
                 onOpenMatch={onOpenMatch}
                 readOnly={readOnly}
+                revealGrades={revealGrades}
               />
             </div>
           );
@@ -1678,10 +1769,9 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
   );
 }
 
-function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, stats, liveRoundKey, readOnly = false }) {
+function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats }) {
   const scrollRef = useRef(null);
   const colRefs = useRef({}); // roundKey → [leftCol, rightCol?]
-  const [activeRound, setActiveRound] = useState("r32");
   const centered = useRef(false);
 
   const setColRef = (roundKey, side) => (el) => {
@@ -1696,45 +1786,6 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
       left: el.offsetLeft - (container.clientWidth - el.clientWidth) / 2,
       behavior: smooth ? "smooth" : "auto",
     });
-  }, []);
-
-  const jumpTo = useCallback(
-    (roundKey) => {
-      const cols = colRefs.current[roundKey] || {};
-      const container = scrollRef.current;
-      if (!container) return;
-      setActiveRound(roundKey);
-      // Jump to whichever side of the tree is closer to the current view.
-      const mid = container.scrollLeft + container.clientWidth / 2;
-      const target =
-        cols.right && cols.left
-          ? Math.abs(cols.left.offsetLeft - mid) <= Math.abs(cols.right.offsetLeft - mid)
-            ? cols.left
-            : cols.right
-          : cols.left || cols.right;
-      centerOn(target);
-    },
-    [centerOn]
-  );
-
-  // Track which round is nearest the viewport center while scrolling.
-  const onScroll = useCallback(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const mid = container.scrollLeft + container.clientWidth / 2;
-    let best = "r32";
-    let bestDist = Infinity;
-    for (const [roundKey, cols] of Object.entries(colRefs.current)) {
-      for (const el of Object.values(cols)) {
-        if (!el) continue;
-        const d = Math.abs(el.offsetLeft + el.clientWidth / 2 - mid);
-        if (d < bestDist) {
-          bestDist = d;
-          best = roundKey;
-        }
-      }
-    }
-    setActiveRound(best);
   }, []);
 
   // Open centered on the final so both halves of the tree are visible.
@@ -1759,13 +1810,12 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
     return Array.from({ length: half }, (_, i) => base + i);
   };
 
-  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly };
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats };
 
   return (
     <>
-      <RoundNav activeRound={activeRound} onJump={jumpTo} stats={stats} liveRoundKey={liveRoundKey} />
-      <div ref={scrollRef} onScroll={onScroll} className="nice-scroll overflow-x-auto pb-4">
-        <div className="mx-auto flex w-max items-stretch gap-0 px-4" style={{ height: `calc(${BRACKET_ROWS} * var(--bracket-row))` }}>
+      <div ref={scrollRef} className="bracket-viewport nice-scroll">
+        <div className="bracket-tree mx-auto flex w-max items-stretch gap-0 px-4">
           {/* LEFT half of the tree */}
           <BracketColumn roundIdx={0} indices={sideIdx(0, "left")} align="left" colRef={setColRef("r32", "left")} {...shared} />
           <Connector count={8} side="left" active={activeFor(0, "left")} />
@@ -1852,13 +1902,13 @@ function NameModal({ onSubmit }) {
   );
 }
 
-function FriendsModal({ open, onClose, friends, currentUid, onSelect }) {
+function FriendsModal({ open, onClose, friends, currentUid, activeUid, onSelect }) {
   return (
     <Modal open={open} onClose={onClose} maxW="max-w-md">
       <div className="flex flex-col">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div>
-            <h2 className="font-display text-xl tracking-wider">Friends Predictions</h2>
+            <h2 className="font-display text-xl tracking-wider">Switch viewer</h2>
             <p className="mt-0.5 text-[10px] font-semibold text-[var(--text-muted)]">Ranked by correct picks</p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 place-items-center rounded-lg text-sm" aria-label="Close">
@@ -1872,13 +1922,17 @@ function FriendsModal({ open, onClose, friends, currentUid, onSelect }) {
             <ul className="flex flex-col gap-1">
               {friends.map((friend, idx) => {
                 const isMe = friend.uid === currentUid;
+                const isActive = friend.uid === activeUid;
                 const hasGraded = friend.total > 0;
                 return (
                   <li key={friend.uid}>
                     <button
                       type="button"
                       onClick={() => onSelect(friend)}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+                      className={[
+                        "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]",
+                        isActive ? "bg-[var(--pitch)]/12 ring-1 ring-[var(--pitch-glow)]/25" : "",
+                      ].join(" ")}
                     >
                       <span
                         className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-black tabular-nums ${
@@ -1896,13 +1950,19 @@ function FriendsModal({ open, onClose, friends, currentUid, onSelect }) {
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text-primary)]">
                           <span className="truncate">{friend.name}</span>
-                          {friend.locked && (
-                            <span className="shrink-0 text-[10px]" title="Locked">
-                              🔒
+                          {friend.locked ? (
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--gold-bright)]" title="Locked">
+                              <IconLock className="h-2.5 w-2.5" />
+                              Locked
                             </span>
+                          ) : (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-[var(--pitch-glow)]">Open</span>
                           )}
                           {isMe && (
                             <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--pitch-glow)]">You</span>
+                          )}
+                          {isActive && (
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Viewing</span>
                           )}
                         </span>
                         <span className="text-[10px] font-medium text-[var(--text-muted)]">
@@ -2001,10 +2061,15 @@ export default function App() {
   } = usePredictions(winners, { onRemoteWinners });
 
   const teams = r32Teams ?? [];
+  const selfPrediction = useMemo(() => friends.find((f) => f.uid === uid) ?? null, [friends, uid]);
+  const canEdit = !locked && !viewingFriend;
+
   const displayWinners = useMemo(() => {
-    const w = viewingFriend?.winners ?? winners;
+    let w = winners;
+    if (viewingFriend) w = viewingFriend.winners;
+    else if (locked && selfPrediction) w = selfPrediction.winners;
     return teams.length === 32 ? normalize(w, teams) : w;
-  }, [viewingFriend, winners, teams]);
+  }, [viewingFriend, winners, teams, locked, selfPrediction]);
   const slotMatches = useMemo(() => buildSlotMatches(byNum), [byNum]);
   const actual = useMemo(() => buildActual(slotMatches), [slotMatches]);
 
@@ -2029,7 +2094,6 @@ export default function App() {
   }, [slotMatches]);
   const liveKey = liveNums.length ? numToSlot.get(liveNums[0]) : null;
   const nextKey = nextMatch ? numToSlot.get(nextMatch.num) : null;
-  const liveRoundKey = liveKey ? liveKey.split("-")[0] : null;
 
   // Re-validate stored picks once bracket seeds load.
   useEffect(() => {
@@ -2043,7 +2107,17 @@ export default function App() {
     } catch {
       /* ignore quota errors */
     }
-  }, [winners, readOnly]);
+  }, [winners, readOnly, locked]);
+
+  const isViewingSelf = !viewingFriend;
+  const activeViewerName = viewingFriend?.name ?? name ?? "You";
+  const activeViewerLocked = viewingFriend ? viewingFriend.locked : locked;
+  const activeUid = viewingFriend?.uid ?? uid;
+
+  const pickProgress = useMemo(() => getPickProgress(winners), [winners]);
+  const lockTooltip = pickProgress.complete
+    ? "Lock your picks permanently"
+    : `Complete all ${pickProgress.total} matchups before locking (${pickProgress.filled}/${pickProgress.total} picked)`;
 
   const champion = teams.find((t) => t.id === displayWinners[key("final", 0)]) || null;
   const actualChampion = slotMatches[key("final", 0)]?.winner || null;
@@ -2065,7 +2139,7 @@ export default function App() {
 
   const onPick = useCallback(
     (roundIdx, matchIdx, team) => {
-      if (readOnly) return;
+      if (!canEdit || locked) return;
       const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
       setWinners((prev) => {
         const next = { ...prev };
@@ -2074,7 +2148,7 @@ export default function App() {
         return normalize(next, teams);
       });
     },
-    [teams, readOnly]
+    [teams, canEdit, locked]
   );
 
   const handleSelectFriend = useCallback(
@@ -2151,7 +2225,8 @@ export default function App() {
     nextKey,
     onFlagClick,
     onOpenMatch: openMatchBySlot,
-    readOnly,
+    readOnly: !canEdit,
+    revealGrades: activeViewerLocked,
   };
   const showBracket = teams.length === 32;
 
@@ -2164,6 +2239,7 @@ export default function App() {
         onClose={() => setShowFriends(false)}
         friends={rankedFriends}
         currentUid={uid}
+        activeUid={activeUid}
         onSelect={handleSelectFriend}
       />
       <LockConfirmModal
@@ -2181,83 +2257,83 @@ export default function App() {
       <MatchModal match={matchModal} onClose={() => setMatchModal(null)} onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }} />
 
       {/* HEADER */}
-      <header className="broadcast-bar sticky top-0 z-40">
-        <div className="mx-auto flex max-w-[1900px] items-center justify-between gap-3 px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <WCLogo className="h-9 w-9 shrink-0 drop-shadow-lg" />
-            <div className="min-w-0 leading-tight">
-              <h1 className="font-display truncate text-xl tracking-wider sm:text-2xl">
-                World Cup <span className="text-[var(--pitch-glow)]">26</span>
-                <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">· Bracket Challenge</span>
-              </h1>
-              <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">
-                {liveNums.length > 0 ? (
-                  <span className="text-[var(--live)]">● {liveNums.length} match{liveNums.length > 1 ? "es" : ""} live</span>
-                ) : nextMatch?.kickoff ? (
-                  <>
-                    next: {nextMatch.team1?.code ?? "TBD"} v {nextMatch.team2?.code ?? "TBD"} in{" "}
-                    <span className="tabular-nums text-[var(--next)]">{fmtCountdown(nextMatch.kickoff.getTime() - Date.now())}</span>
-                  </>
-                ) : lastUpdated ? (
-                  `updated ${fmtTimeOnly(lastUpdated)}`
-                ) : (
-                  "connecting…"
-                )}
-              </p>
+      <header className="broadcast-bar shrink-0 z-40">
+        <div className="relative mx-auto max-w-[1900px] px-4 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <WCLogo className="h-9 w-9 shrink-0 drop-shadow-lg" />
+              <div className="min-w-0 leading-tight">
+                <h1 className="font-display truncate text-xl tracking-wider sm:text-2xl">
+                  World Cup <span className="text-[var(--pitch-glow)]">26</span>
+                  <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">· Bracket Challenge</span>
+                </h1>
+                <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">
+                  {liveNums.length > 0 ? (
+                    <span className="text-[var(--live)]">● {liveNums.length} match{liveNums.length > 1 ? "es" : ""} live</span>
+                  ) : nextMatch?.kickoff ? (
+                    <>
+                      next: {nextMatch.team1?.code ?? "TBD"} v {nextMatch.team2?.code ?? "TBD"} in{" "}
+                      <span className="tabular-nums text-[var(--next)]">{fmtCountdown(nextMatch.kickoff.getTime() - Date.now())}</span>
+                    </>
+                  ) : lastUpdated ? (
+                    `updated ${fmtTimeOnly(lastUpdated)}`
+                  ) : (
+                    "connecting…"
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="header-controls">
-            <ScoreHUD stats={stats} />
-            <HeaderToolbar
-              viewingFriend={viewingFriend}
-              locked={locked}
-              onExitFriendView={exitFriendView}
-              onOpenFriends={() => setShowFriends(true)}
-              onOpenLock={() => setShowLockConfirm(true)}
-              onReset={resetBracket}
-            />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-28 sm:px-40">
+              <div className="pointer-events-auto">
+                <ViewingAsPicker
+                  name={activeViewerName}
+                  isLocked={activeViewerLocked}
+                  onClick={() => setShowFriends(true)}
+                  disabled={needsName || !authReady}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-1 items-center justify-end gap-2">
+              <HeaderToolbar
+                isViewingSelf={isViewingSelf}
+                locked={locked}
+                canLock={pickProgress.complete}
+                lockTooltip={lockTooltip}
+                onOpenLock={() => setShowLockConfirm(true)}
+                onReset={resetBracket}
+              />
+            </div>
           </div>
         </div>
       </header>
 
-      {viewingFriend && (
-        <div className="border-b border-[var(--pitch-glow)]/20 bg-[color-mix(in_oklch,var(--pitch)_18%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--pitch-glow)]">
-          Viewing as: {viewingFriend.name}
+      {!isViewingSelf && (
+        <div className="shrink-0 border-b border-[var(--pitch-glow)]/20 bg-[color-mix(in_oklch,var(--pitch)_18%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--pitch-glow)]">
+          {activeViewerName}&apos;s bracket is read-only
           {stats.total > 0 && (
             <span className="text-[var(--gold-bright)]">
               {" "}
               · {stats.points} pts · {stats.correct}/{stats.total} correct
             </span>
           )}
-          {" "}— picks are read-only
         </div>
-      )}
-
-      {!viewingFriend && locked && (
-        <div className="border-b border-[var(--gold)]/25 bg-[color-mix(in_oklch,var(--gold)_12%,transparent)] px-4 py-2 text-center text-[11px] font-semibold text-[var(--gold-bright)]">
-          Your picks are locked — contact an admin to unlock
-        </div>
-      )}
-
-      {/* GAMES RAIL — linear, chronological */}
-      {knockouts.length > 0 && (
-        <GamesRail matches={knockouts} liveNums={liveNums} nextNum={nextMatch?.num ?? null} onOpenMatch={setMatchModal} />
       )}
 
       {error && (
-        <div className="mx-auto max-w-7xl px-4 pt-2 text-center text-[11px] font-semibold text-amber-400/80">
+        <div className="mx-auto max-w-7xl shrink-0 px-4 pt-2 text-center text-[11px] font-semibold text-amber-400/80">
           Could not refresh live scores — showing last known data.
         </div>
       )}
 
       {/* BRACKET */}
-      <main>
+      <main className="app-main">
         {!showBracket &&
           (loading ? (
             <LoadingScreen />
           ) : (
-            <div className="py-24 text-center text-sm text-[var(--text-muted)]">
+            <div className="flex flex-1 items-center justify-center px-4 py-12 text-center text-sm text-[var(--text-muted)]">
               Bracket seeds not available yet — the Round of 32 line-up appears once the group stage is complete.
             </div>
           ))}
@@ -2268,23 +2344,38 @@ export default function App() {
             champion={champion}
             actualChampion={actualChampion}
             stats={stats}
-            liveRoundKey={liveRoundKey}
           />
         )}
       </main>
 
-      <footer className="px-4 pb-6 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
-        {viewingFriend ? (
-          <>Viewing {viewingFriend.name}&apos;s bracket — tap flags or match details to explore. Use &ldquo;My picks&rdquo; to return to yours.</>
-        ) : locked ? (
-          <>Your bracket is locked — picks cannot be changed until an admin unlocks your entry in the database.</>
-        ) : (
-          <>
-            Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
-            Picks auto-save to the cloud{name ? ` as ${name}` : ""} & auto-grade against live results (refreshes every minute).
-          </>
-        )}
-      </footer>
+      {knockouts.length > 0 && (
+        <PredictionsRail
+          matches={knockouts}
+          liveNums={liveNums}
+          nextNum={nextMatch?.num ?? null}
+          numToSlot={numToSlot}
+          winners={displayWinners}
+          actual={actual}
+          teams={teams}
+          revealGrades={activeViewerLocked}
+          onOpenMatch={setMatchModal}
+        />
+      )}
+
+      {knockouts.length === 0 && (
+        <footer className="shrink-0 px-4 pb-5 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
+          {!isViewingSelf ? (
+            <>Tap &ldquo;Viewing as&rdquo; above to switch brackets · flags and match details still work in read-only mode.</>
+          ) : locked ? (
+            <>Your bracket is locked — picks cannot be changed until an admin unlocks your entry in the database.</>
+          ) : (
+            <>
+              Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
+              Picks auto-save to the cloud{name ? ` as ${name}` : ""} & auto-grade against live results (refreshes every minute).
+            </>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
