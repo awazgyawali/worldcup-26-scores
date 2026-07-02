@@ -4,3 +4,10 @@ dist/
 .yarn/cache
 .yarn/unplugged
 .pnp.*
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
