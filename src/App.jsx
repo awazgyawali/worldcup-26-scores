@@ -1196,125 +1196,376 @@ function Countdown({ to }) {
 }
 
 // ----------------------------------------------------------------------------
-// TEAM JOURNEY MODAL — full tournament run, group stage included.
+// TEAM JOURNEY MODAL — master-detail: fixture list + inline match detail.
 // ----------------------------------------------------------------------------
-function TeamModal({ team, journey, onClose, onOpenMatch }) {
-  if (!team) return null;
-  const playedGames = journey.filter((m) => m.gf != null);
-  const wins = playedGames.filter((m) => (m.winner ? m.winner.id === team.id : false)).length;
-  const draws = playedGames.filter((m) => m.gf === m.ga && !m.pens).length;
-  const losses = playedGames.length - wins - draws;
-  const gf = playedGames.reduce((s, m) => s + m.gf, 0);
-  const ga = playedGames.reduce((s, m) => s + m.ga, 0);
+function journeyResult(entry) {
+  const scored = entry.gf != null;
+  if (!scored) {
+    if (entry.status === "live") return "live";
+    if (entry.status === "upcoming") return "upcoming";
+    return "tbd";
+  }
+  const wonPens = entry.pens && entry.winner?.id === entry.us.id;
+  const lostPens = entry.pens && entry.winner && entry.winner.id !== entry.us.id;
+  if (entry.gf > entry.ga || wonPens) return "win";
+  if (entry.gf < entry.ga || lostPens) return "loss";
+  return "draw";
+}
+
+const JOURNEY_RESULT_LABEL = {
+  win: "Win",
+  loss: "Loss",
+  draw: "Draw",
+  live: "Live",
+  upcoming: "Upcoming",
+  tbd: "TBD",
+};
+
+const goalMatchPhase = (g) => {
+  const base = parseInt(String(g.minute).split("+")[0], 10);
+  if (!Number.isNaN(base) && base > 90) return "aet";
+  return "ft";
+};
+
+function buildJourneyTimeline(entry, team) {
+  const rows = [
+    ...(entry.ourGoals || []).map((g) => ({ ...g, side: "us", code: team.code })),
+    ...(entry.theirGoals || []).map((g) => ({ ...g, side: "them", code: entry.them.code })),
+  ].sort((a, b) => goalMinuteVal(a) - goalMinuteVal(b));
+
+  const ft = [];
+  const aet = [];
+  for (const g of rows) {
+    (goalMatchPhase(g) === "aet" ? aet : ft).push(g);
+  }
+
+  const usIsTeam1 = entry.us?.id === entry.team1?.id;
+  const pensScore = entry.pens
+    ? {
+        us: usIsTeam1 ? entry.pens[0] : entry.pens[1],
+        them: usIsTeam1 ? entry.pens[1] : entry.pens[0],
+      }
+    : null;
+
+  return { ft, aet, pensScore };
+}
+
+function JourneyGoalCell({ goal, align }) {
+  if (!goal) return null;
+  return (
+    <span className={["journey-timeline__goal", `journey-timeline__goal--${align}`].join(" ")}>
+      <span className="journey-timeline__scorer">{goal.name}</span>
+      {goal.penalty && <span className="journey-goal__tag">PEN</span>}
+      {goal.owngoal && <span className="journey-goal__tag journey-goal__tag--og">OG</span>}
+    </span>
+  );
+}
+
+function JourneyTwoSidedRow({ goal }) {
+  const isUs = goal.side === "us";
+  return (
+    <li className="journey-timeline__row">
+      <span className="journey-timeline__side journey-timeline__side--left">
+        {isUs ? <JourneyGoalCell goal={goal} align="right" /> : null}
+      </span>
+      <span className="journey-timeline__minute">{goal.minute}′</span>
+      <span className="journey-timeline__side journey-timeline__side--right">
+        {!isUs ? <JourneyGoalCell goal={goal} align="left" /> : null}
+      </span>
+    </li>
+  );
+}
+
+function JourneyTimelineSection({ shortLabel, goals, emptyLabel, pensScore, team, opponent }) {
+  const hasGoals = goals.length > 0;
+  const hasPens = pensScore != null;
+  if (!hasGoals && !hasPens && !emptyLabel) return null;
 
   return (
-    <Modal open={!!team} onClose={onClose}>
-      <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5">
-        <img
-          src={flagSrc(team.iso2)}
-          srcSet={flagSrcSet(team.iso2)}
-          alt=""
-          className="h-10 w-14 rounded-md object-cover shadow-md ring-1 ring-black/40"
+    <div className="journey-timeline__section">
+      <div className="journey-timeline__header">
+        <span className="journey-timeline__header-line" aria-hidden />
+        <span className="journey-timeline__header-label">{shortLabel}</span>
+        <span className="journey-timeline__header-line" aria-hidden />
+      </div>
+
+      <div className="journey-timeline__track">
+        <div className="journey-timeline__spine" aria-hidden />
+
+        {hasGoals ? (
+          <ul className="journey-timeline__list">
+            {goals.map((g, i) => (
+              <JourneyTwoSidedRow key={`${g.name}-${g.minute}-${g.code}-${i}`} goal={g} />
+            ))}
+          </ul>
+        ) : emptyLabel ? (
+          <p className="journey-timeline__empty">{emptyLabel}</p>
+        ) : null}
+
+        {hasPens && (
+          <div className="journey-timeline__pens-row">
+            <span className="journey-timeline__side journey-timeline__side--left">
+              <span className="journey-timeline__pens-side journey-timeline__pens-side--us">
+                {pensScore.us}
+              </span>
+            </span>
+            <span className="journey-timeline__minute journey-timeline__minute--pens">PENS</span>
+            <span className="journey-timeline__side journey-timeline__side--right">
+              <span className="journey-timeline__pens-side journey-timeline__pens-side--them">
+                {pensScore.them}
+              </span>
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JourneyGoalTimeline({ entry, team }) {
+  const { ft, aet, pensScore } = buildJourneyTimeline(entry, team);
+  const showAet = aet.length > 0 || entry.phase === "aet" || entry.phase === "pens";
+  const hasAny = ft.length > 0 || aet.length > 0 || pensScore != null;
+
+  if (!hasAny) {
+    return <p className="journey-timeline__none">No goals recorded.</p>;
+  }
+
+  return (
+    <div className="journey-timeline">
+      <JourneyTimelineSection
+        shortLabel="FT"
+        goals={ft}
+        emptyLabel={ft.length === 0 ? "No goals in regulation" : null}
+        team={team}
+        opponent={entry.them}
+      />
+      {showAet && (
+        <JourneyTimelineSection
+          shortLabel="AET"
+          goals={aet}
+          emptyLabel={aet.length === 0 ? "No goals in extra time" : null}
+          team={team}
+          opponent={entry.them}
         />
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display truncate text-2xl tracking-wide text-[var(--text-primary)]">
-            {team.name} <span className="text-[var(--text-muted)]">· {team.code}</span>
-          </h2>
+      )}
+      {pensScore != null && (
+        <JourneyTimelineSection
+          shortLabel="PENS"
+          goals={[]}
+          pensScore={pensScore}
+          team={team}
+          opponent={entry.them}
+        />
+      )}
+    </div>
+  );
+}
+
+function JourneyMatchDetail({ entry, team, onOpenMatch }) {
+  const result = journeyResult(entry);
+  const scored = entry.gf != null;
+  const played = entry.status === "played";
+  const live = entry.status === "live";
+  const upcoming = entry.status === "upcoming";
+
+  return (
+    <div className="journey-detail">
+      <div className="journey-detail__meta">
+        <span className="journey-detail__round">{entry.group || entry.roundLabel}</span>
+        {entry.num && <span className="journey-detail__match-num">Match {entry.num}</span>}
+        {entry.kickoff && <span className="journey-detail__when">{fmtKickoff(entry.kickoff)}</span>}
+      </div>
+
+      <div className="journey-detail__scoreboard">
+        <div className="journey-detail__team journey-detail__team--us">
+          <img src={flagSrc(team.iso2)} alt="" className="journey-detail__flag" />
+          <span className="journey-detail__team-name">{team.name}</span>
+          <span className="journey-detail__team-code">{team.code}</span>
+        </div>
+
+        <div className="journey-detail__center">
+          {scored ? (
+            <span className="journey-detail__score">
+              {entry.gf}
+              <span className="journey-detail__score-sep">–</span>
+              {entry.ga}
+            </span>
+          ) : (
+            <span className="journey-detail__vs">vs</span>
+          )}
+
+          {live && (
+            <span className="journey-detail__badge journey-detail__badge--live">
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" />
+              {liveMinute(entry.kickoff)}
+            </span>
+          )}
+          {played && (
+            <span className="journey-detail__badge">
+              {entry.phase === "aet" ? "After extra time" : entry.phase === "pens" ? "Penalties" : "Full time"}
+            </span>
+          )}
+          {entry.pens && (
+            <span className="journey-detail__badge journey-detail__badge--pens">
+              Pens {entry.pens[0]}–{entry.pens[1]}
+            </span>
+          )}
+          {entry.ht && (
+            <span className="journey-detail__badge journey-detail__badge--muted">
+              HT {entry.ht[0]}–{entry.ht[1]}
+            </span>
+          )}
+          {upcoming && entry.kickoff && <Countdown to={entry.kickoff} />}
+        </div>
+
+        <div className="journey-detail__team journey-detail__team--them">
+          <img src={flagSrc(entry.them.iso2)} alt="" className="journey-detail__flag" />
+          <span className="journey-detail__team-name">{entry.them.name}</span>
+          <span className="journey-detail__team-code">{entry.them.code}</span>
+        </div>
+      </div>
+
+      <div className="journey-detail__result">
+        <span className={["journey-result-pill", `journey-result-pill--${result}`].join(" ")}>
+          {JOURNEY_RESULT_LABEL[result]}
+        </span>
+      </div>
+
+      {(played || live) && (
+        <div className="journey-detail__timeline-wrap">
+          <p className="journey-detail__timeline-title">Goal timeline</p>
+          <JourneyGoalTimeline entry={entry} team={team} />
+        </div>
+      )}
+
+      <div className="journey-detail__footer">
+        {entry.ground && <span>🏟 {entry.ground}</span>}
+        {onOpenMatch && entry.num && (
+          <button type="button" onClick={() => onOpenMatch(entry)} className="journey-detail__link">
+            Open full match view →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JourneyListItem({ entry, selected, onSelect }) {
+  const result = journeyResult(entry);
+  const scored = entry.gf != null;
+  const live = entry.status === "live";
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-selected={selected}
+        className={["journey-item", selected ? "journey-item--selected" : "", `journey-item--${result}`].join(" ")}
+      >
+        <div className="journey-item__top">
+          <span className="journey-item__round">{entry.group || entry.roundLabel}</span>
+          <span className={["journey-result-pill journey-result-pill--sm", `journey-result-pill--${result}`].join(" ")}>
+            {JOURNEY_RESULT_LABEL[result]}
+          </span>
+        </div>
+        <div className="journey-item__main">
+          <img src={flagSrc(entry.them.iso2)} alt="" className="journey-item__flag" />
+          <div className="journey-item__body">
+            <span className="journey-item__opponent">vs {entry.them.name}</span>
+            {entry.kickoff && (
+              <span className="journey-item__date">{fmtKickoff(entry.kickoff)}</span>
+            )}
+          </div>
+          {scored ? (
+            <span className="journey-item__score">{entry.gf}–{entry.ga}</span>
+          ) : live ? (
+            <span className="journey-item__score journey-item__score--live">LIVE</span>
+          ) : entry.kickoff ? (
+            <span className="journey-item__score journey-item__score--time">{fmtTimeOnly(entry.kickoff)}</span>
+          ) : (
+            <span className="journey-item__score journey-item__score--muted">—</span>
+          )}
+        </div>
+      </button>
+    </li>
+  );
+}
+
+function TeamModal({ team, journey, onClose, onOpenMatch }) {
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  useEffect(() => {
+    if (!team || journey.length === 0) {
+      setSelectedIdx(0);
+      return;
+    }
+    let idx = journey.findLastIndex((m) => m.gf != null);
+    if (idx < 0) idx = journey.findIndex((m) => m.status === "live");
+    if (idx < 0) idx = journey.findIndex((m) => m.status === "upcoming");
+    setSelectedIdx(idx >= 0 ? idx : 0);
+  }, [team?.code, journey.length]);
+
+  if (!team) return null;
+
+  const playedGames = journey.filter((m) => m.gf != null);
+  const wins = playedGames.filter((m) => journeyResult(m) === "win").length;
+  const draws = playedGames.filter((m) => journeyResult(m) === "draw").length;
+  const losses = playedGames.filter((m) => journeyResult(m) === "loss").length;
+  const gf = playedGames.reduce((s, m) => s + m.gf, 0);
+  const ga = playedGames.reduce((s, m) => s + m.ga, 0);
+  const selected = journey[selectedIdx] ?? null;
+
+  return (
+    <Modal open={!!team} onClose={onClose} maxW="max-w-4xl">
+      <div className="journey-header">
+        <img src={flagSrc(team.iso2)} srcSet={flagSrcSet(team.iso2)} alt="" className="journey-header__flag" />
+        <div className="journey-header__body">
+          <h2 className="journey-header__title">{team.name}</h2>
+          <p className="journey-header__code">{team.code} · Tournament run</p>
           {playedGames.length > 0 && (
-            <p className="text-[11px] font-semibold text-[var(--text-muted)]">
-              <span className="text-[var(--pitch-glow)]">{wins}W</span> · {draws}D ·{" "}
-              <span className="text-[var(--wrong)]">{losses}L</span> · {gf} scored / {ga} conceded
+            <p className="journey-header__record">
+              <span className="journey-header__w">{wins}W</span>
+              <span>{draws}D</span>
+              <span className="journey-header__l">{losses}L</span>
+              <span className="journey-header__sep">·</span>
+              <span>{gf} scored · {ga} conceded</span>
             </p>
           )}
         </div>
-        <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm" aria-label="Close">
+        <button type="button" onClick={onClose} className="btn-ghost journey-header__close" aria-label="Close">
           ✕
         </button>
       </div>
 
-      <div className="nice-scroll flex-1 overflow-y-auto px-3 py-3">
-        {journey.length === 0 ? (
-          <p className="py-8 text-center text-sm text-[var(--text-muted)]">No matches found.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {journey.map((m, i) => {
-              const scored = m.gf != null;
-              const wonPens = m.pens && m.winner?.id === team.id;
-              const lostPens = m.pens && m.winner && m.winner.id !== team.id;
-              const won = scored && (m.gf > m.ga || wonPens);
-              const lost = scored && (m.gf < m.ga || lostPens);
-              const ourScorers = (m.ourGoals || [])
-                .map((g) => `${g.name} ${g.minute}′${g.penalty ? " (P)" : ""}${g.owngoal ? " (OG)" : ""}`)
-                .join(" · ");
-              return (
-                <motion.li
-                  key={`${m.date}-${m.them?.code}-${i}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.25 }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onOpenMatch?.(m)}
-                    className={[
-                      "w-full rounded-lg border px-3 py-2.5 text-left transition hover:brightness-110",
-                      won
-                        ? "border-[color-mix(in_oklch,var(--pitch-glow)_30%,transparent)] bg-[color-mix(in_oklch,var(--pitch)_12%,transparent)]"
-                        : lost
-                        ? "border-[color-mix(in_oklch,var(--wrong)_22%,transparent)] bg-[color-mix(in_oklch,var(--wrong)_6%,transparent)]"
-                        : "border-[var(--border)] bg-[var(--bg-elevated)]",
-                    ].join(" ")}
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-[9.5px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                        {m.group || m.roundLabel}
-                      </span>
-                      {m.kickoff && (
-                        <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]/70">{fmtKickoff(m.kickoff)}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2.5">
-                      <img src={flagSrc(m.them.iso2)} alt="" className="h-4.5 w-6.5 shrink-0 rounded-[3px] object-cover ring-1 ring-black/30" />
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-secondary)]">
-                        vs {m.them.name}
-                      </span>
-                      {scored ? (
-                        <span className="flex shrink-0 items-center gap-1.5">
-                          {m.pens && (
-                            <span className="text-[9.5px] font-bold text-[var(--gold-bright)]">
-                              {wonPens ? "won" : "lost"} pens
-                            </span>
-                          )}
-                          <span
-                            className={[
-                              "rounded-md px-2 py-0.5 text-sm font-extrabold tabular-nums",
-                              won ? "bg-emerald-500/20 text-emerald-200" : lost ? "bg-rose-500/15 text-rose-200" : "bg-white/5 text-[var(--text-secondary)]",
-                            ].join(" ")}
-                          >
-                            {m.gf}–{m.ga}
-                          </span>
-                        </span>
-                      ) : m.status === "live" ? (
-                        <span className="flex items-center gap-1 text-[10px] font-black uppercase text-[var(--live)]">
-                          <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" /> live
-                        </span>
-                      ) : m.kickoff ? (
-                        <span className="text-[11px] font-semibold tabular-nums text-[var(--text-muted)]">{fmtMatchTime(m.kickoff)}</span>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-muted)]/60">TBD</span>
-                      )}
-                    </div>
-                    {ourScorers && (
-                      <p className="mt-1 truncate text-[10.5px] text-[var(--text-muted)]">⚽ {ourScorers}</p>
-                    )}
-                    {m.ground && <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]/60">🏟 {m.ground}</p>}
-                  </button>
-                </motion.li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+      {journey.length === 0 ? (
+        <p className="journey-empty">No matches found for this team.</p>
+      ) : (
+        <div className="journey-shell">
+          <aside className="journey-master">
+            <p className="journey-master__label">Fixtures · {journey.length}</p>
+            <ul className="journey-master__list nice-scroll">
+              {journey.map((m, i) => (
+                <JourneyListItem
+                  key={`${m.num ?? m.date}-${m.them?.code}-${i}`}
+                  entry={m}
+                  selected={i === selectedIdx}
+                  onSelect={() => setSelectedIdx(i)}
+                />
+              ))}
+            </ul>
+          </aside>
+
+          <section className="journey-detail-pane nice-scroll" aria-label="Match detail">
+            {selected ? (
+              <JourneyMatchDetail entry={selected} team={team} onOpenMatch={onOpenMatch} />
+            ) : (
+              <p className="journey-empty">Select a fixture to view details.</p>
+            )}
+          </section>
+        </div>
+      )}
     </Modal>
   );
 }
