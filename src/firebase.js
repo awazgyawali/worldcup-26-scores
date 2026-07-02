@@ -35,4 +35,8 @@ export const googleProvider = new GoogleAuthProvider();
  *     allow update: if request.auth != null && request.auth.uid == userId;
  *     allow delete: if false;
  *   }
+ *
+ * Migration fields (anonymous → existing Google account):
+ *   abandoned / abandonedAt on the old anonymous doc (locked copy, safe to delete later)
+ *   migratedFrom / migratedAt on the Google account doc
  */

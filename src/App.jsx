@@ -122,10 +122,91 @@ const REQUIRED_PICK_KEYS = [
   "third-0",
 ];
 const TOTAL_REQUIRED_PICKS = REQUIRED_PICK_KEYS.length;
+const GUIDE_MAX_INTERACTIONS = 2;
 
 function getPickProgress(winners) {
   const filled = REQUIRED_PICK_KEYS.filter((k) => winners[k]).length;
   return { filled, total: TOTAL_REQUIRED_PICKS, complete: filled === TOTAL_REQUIRED_PICKS };
+}
+
+function hasBracketPicks(winners) {
+  return REQUIRED_PICK_KEYS.some((k) => winners[k]);
+}
+
+/** Pre-fill only finished matches that already have a winner. */
+function buildStarterWinners(teams, slotMatches) {
+  return normalize(buildActual(slotMatches), teams);
+}
+
+function parseBracketSlotKey(slotKey) {
+  if (slotKey === "third-0") return { roundIdx: "third", matchIdx: 0 };
+  for (let ri = 0; ri < ROUNDS.length; ri++) {
+    const r = ROUNDS[ri];
+    for (let m = 0; m < r.matches; m++) {
+      if (key(r.key, m) === slotKey) return { roundIdx: ri, matchIdx: m };
+    }
+  }
+  return null;
+}
+
+function getTeamsForBracketSlot(slotKey, winners, teams) {
+  const parsed = parseBracketSlotKey(slotKey);
+  if (!parsed) return [null, null];
+  if (parsed.roundIdx === "third") return getThirdPlaceTeams(winners, teams);
+  return getMatchTeams(parsed.roundIdx, parsed.matchIdx, winners, teams);
+}
+
+function slotNeedsPick(slotKey, winners, teams, actual) {
+  if (winners[slotKey] || actual[slotKey]) return false;
+  const [a, b] = getTeamsForBracketSlot(slotKey, winners, teams);
+  return !!(a && b);
+}
+
+function getScoreSlotKeyForMatch(match, numToSlot) {
+  if (match.isKnockout) {
+    return numToSlot.get(match.num) ?? null;
+  }
+  return `rail-${match.num}`;
+}
+
+function findRailScoreGuideMatch(matches, winners, numToSlot) {
+  for (const m of matches) {
+    if (m.status !== "upcoming" || !m.kickoff) continue;
+    const slotKey = getScoreSlotKeyForMatch(m, numToSlot);
+    if (!slotKey || getScorePrediction(winners, slotKey)) continue;
+    return m;
+  }
+  return null;
+}
+
+/** Next bracket slot the user should pick — prefers the soonest real fixture. */
+function findGuidancePickKey(winners, teams, actual, slotMatches, nextMatch, numToSlot) {
+  if (nextMatch?.num) {
+    const slotKey = numToSlot.get(nextMatch.num);
+    if (slotKey && slotNeedsPick(slotKey, winners, teams, actual)) {
+      return slotKey;
+    }
+  }
+
+  for (const slotKey of REQUIRED_PICK_KEYS) {
+    if (slotNeedsPick(slotKey, winners, teams, actual)) return slotKey;
+  }
+
+  return null;
+}
+
+function isMatchScorable(match, lockTimeMs) {
+  if (!lockTimeMs || !match?.kickoff) return true;
+  return match.kickoff.getTime() >= lockTimeMs;
+}
+
+function buildScorableActual(actual, slotMatches, lockTimeMs) {
+  if (!lockTimeMs) return actual;
+  const filtered = {};
+  for (const [k, id] of Object.entries(actual)) {
+    if (isMatchScorable(slotMatches[k], lockTimeMs)) filtered[k] = id;
+  }
+  return filtered;
 }
 const BRACKET_ROWS = 8;
 
@@ -291,7 +372,7 @@ const processWorldCupJson = (data) => {
   return { matches, byNum: enrichedByNum, r32Teams, journeys };
 };
 
-function useWorldCup() {
+function useWorldCup(enabled = true) {
   const [state, setState] = useState({ matches: [], byNum: new Map(), r32Teams: null, journeys: new Map() });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -314,6 +395,11 @@ function useWorldCup() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
+
     fetchLive();
     const refreshId = setInterval(fetchLive, POLL_EVERY_MS);
     const tickId = setInterval(() => setTick((t) => t + 1), 1000);
@@ -324,7 +410,7 @@ function useWorldCup() {
       clearInterval(tickId);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [fetchLive]);
+  }, [enabled, fetchLive]);
 
   return { ...state, loading, lastUpdated, error };
 }
@@ -571,7 +657,7 @@ function gradeScorePrediction(predictedScore, ftScore) {
 /** Grade picks — points only for finished matches where the user made a pick.
  *  Score predictions on real fixtures are graded separately (2 / 5 pts).
  */
-function gradeWinners(winners, actual, slotMatches) {
+function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
   const byRound = {};
   let correct = 0,
     total = 0,
@@ -587,6 +673,7 @@ function gradeWinners(winners, actual, slotMatches) {
       const k = key(r.key, m);
       const match = slotMatches?.[k];
       if (!actual[k]) continue;
+      if (!isMatchScorable(match, lockTimeMs)) continue;
       byRound[r.key].played++;
       played++;
       if (!winners[k]) continue;
@@ -618,7 +705,7 @@ function gradeWinners(winners, actual, slotMatches) {
 }
 
 /** Get detailed prediction info for a single match - used when viewing others' brackets */
-function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints, teamById, byNum) {
+function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints, teamById, byNum, lockTimeMs = null) {
   // Get winner pick
   let pickKey = slotKey;
   let scoreKey = slotKey + SCORE_SUFFIX;
@@ -631,6 +718,7 @@ function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints
   
   const predictedWinnerId = winners[pickKey] || null;
   const predictedScore = winners[scoreKey] || null;
+  const scorable = isMatchScorable(match, lockTimeMs);
   
   // Calculate points if match is played
   let pointsEarned = 0;
@@ -638,14 +726,14 @@ function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints
   let winnerCorrect = false;
   let scoreResult = null; // 'exact', 'oneside', or null
   
-  if (match.status === "played" && match.winner && predictedWinnerId) {
+  if (scorable && match.status === "played" && match.winner && predictedWinnerId) {
     if (predictedWinnerId === match.winner.id) {
       winnerCorrect = true;
       pointsEarned = isKnockout ? roundPoints : 1;
     }
   }
 
-  if (match.status === "played" && predictedScore && match.ftScore) {
+  if (scorable && match.status === "played" && predictedScore && match.ftScore) {
     const { scoreResult: sr, scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore);
     scoreResult = sr;
     scorePointsEarned = sp;
@@ -903,6 +991,21 @@ function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locke
   );
 }
 
+function bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey }) {
+  if (guidanceKey && rk === guidanceKey) return "guide";
+  if (liveKey && rk === liveKey) return "live";
+  if (nextKey && rk === nextKey) return "next";
+  return null;
+}
+
+function BracketGuideLabel() {
+  return <p className="bracket-guide-label">Select your winner</p>;
+}
+
+function RailGuideLabel() {
+  return <p className="rail-guide-label">Predict score on upcoming games</p>;
+}
+
 // ----------------------------------------------------------------------------
 // MATCH CARD (bracket)
 // ----------------------------------------------------------------------------
@@ -973,10 +1076,17 @@ function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPic
       className={[
         "match-ticket relative flex w-full shrink-0 flex-col justify-center rounded-lg p-[5px]",
         readOnly ? "match-ticket--readonly" : "",
-        highlight === "live" ? "match-ticket--live" : highlight === "next" ? "match-ticket--next" : "",
+        highlight === "guide" ? "match-ticket--guide" : highlight === "live" ? "match-ticket--live" : highlight === "next" ? "match-ticket--next" : "",
         pickGrade === "correct" ? "match-ticket--graded-correct" : pickGrade === "wrong" ? "match-ticket--graded-wrong" : "",
       ].join(" ")}
+      data-bracket-slot={slotKey}
     >
+      {highlight === "guide" && !readOnly && (
+        <div className="match-guide-popover" role="status">
+          <span className="match-guide-popover__arrow" aria-hidden />
+          Tap a team to pick your winner
+        </div>
+      )}
       {/* Points earned — only after match is played */}
       {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.totalPoints > 0 && (
         <PointsEarnedBadge points={predictionInfo.totalPoints} />
@@ -1126,7 +1236,7 @@ function TrophyMark({ champion, isActual }) {
   );
 }
 
-function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, readOnly = false, revealGrades = false }) {
+function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, guidanceKey, readOnly = false, revealGrades = false }) {
   const rk = "third-0";
   const match = slotMatches[rk];
   // Real fixture teams beat the predicted ones once semis are actually played.
@@ -1148,7 +1258,7 @@ function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagCli
         onPick={onPick}
         actualId={actual[rk]}
         match={match}
-        highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+        highlight={bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey })}
         onFlagClick={onFlagClick}
         onOpenMatch={onOpenMatch}
         readOnly={readOnly}
@@ -1159,13 +1269,13 @@ function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagCli
 }
 
 /** Center column: winner block above, final at vertical center, third place below. */
-function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats }) {
+function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, showPoints = true }) {
   const rk = key("final", 0);
   return (
     <div className="podium-column">
       <div className="podium-column__above">
         <div className="points-podium">
-          <PointsPill stats={stats} />
+          <PointsPill stats={stats} showPoints={showPoints} />
         </div>
         <TrophyMark champion={actualChampion || champion} isActual={!!actualChampion} />
         <div className="rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-3 py-0.5 text-[8.5px] font-black uppercase tracking-[0.22em] text-[#1a1305] shadow-[0_0_18px_-4px_rgba(245,205,110,0.5)]">
@@ -1183,7 +1293,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           onPick={onPick}
           actualId={actual[rk]}
           match={slotMatches[rk]}
-          highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+          highlight={bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey })}
           onFlagClick={onFlagClick}
           onOpenMatch={onOpenMatch}
           readOnly={readOnly}
@@ -1202,6 +1312,7 @@ function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion
           onOpenMatch={onOpenMatch}
           liveKey={liveKey}
           nextKey={nextKey}
+          guidanceKey={guidanceKey}
           readOnly={readOnly}
           revealGrades={revealGrades}
         />
@@ -1242,6 +1353,45 @@ function Modal({ open, onClose, children, maxW = "max-w-lg" }) {
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             className={`flex max-h-[min(88vh,720px)] w-full ${maxW} flex-col overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function Drawer({ open, onClose, children, width = "max-w-[340px]" }) {
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[60] bg-[var(--bg-deep)]/55 backdrop-blur-sm"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className={`fixed inset-y-0 right-0 flex w-full ${width} flex-col overflow-hidden border-l border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl`}
             onClick={(e) => e.stopPropagation()}
           >
             {children}
@@ -2085,7 +2235,7 @@ function RailTeamRow({ team, refName, score, predictedScore, isWinner, isPick, p
   );
 }
 
-function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, onClick, index, isKnockout, onPickWinner, canPick, scorePrediction, predictionInfo, viewerName, isViewingOther }) {
+function RailCard({ match, isLive, isNext, isGuide, pickTeam, actualTeam, revealGrades, onClick, index, isKnockout, onPickWinner, canPick, scorePrediction, predictionInfo, viewerName, isViewingOther }) {
   const played = match.status === "played";
   const upcoming = match.status === "upcoming";
   const showWinnerPick = !isKnockout;
@@ -2146,11 +2296,16 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
       className={[
         "rail-card rail-card--compact snap-start relative",
         upcoming && !isLive ? "rail-card--upcoming" : "",
-        isLive ? "rail-card--live" : isNext ? "rail-card--next" : "",
+        isGuide ? "rail-card--guide" : isLive ? "rail-card--live" : isNext ? "rail-card--next" : "",
         pickVerdict === "correct" ? "rail-card--correct" : "",
         pickVerdict === "wrong" ? "rail-card--wrong" : "",
       ].join(" ")}
     >
+      {isGuide && (
+        <div className="rail-guide-popover" role="status">
+          Tap to predict the score
+        </div>
+      )}
       {/* Points earned — score prediction only on rail (bracket points show on bracket cards) */}
       {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.scorePointsEarned > 0 && (
         <PointsEarnedBadge points={predictionInfo.scorePointsEarned} isRail />
@@ -2194,7 +2349,7 @@ function RailCard({ match, isLive, isNext, pickTeam, actualTeam, revealGrades, o
   );
 }
 
-function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner, byNum, isViewingOther, viewerName, roundPoints }) {
+function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner, byNum, isViewingOther, viewerName, roundPoints, lockTimeMs = null, showRailLabel = false, showScoreGuide = false, scoreGuideNum = null, scoreGuideMatch = null }) {
   const scrollRef = useRef(null);
   const anchorRef = useRef(null);
   const anchored = useRef(false);
@@ -2242,11 +2397,23 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
     container.scrollBy({ left: direction * step, behavior: "smooth" });
   }, []);
 
+  useEffect(() => {
+    if (!scoreGuideNum || !scrollRef.current) return;
+    const timer = window.setTimeout(() => {
+      const el = scrollRef.current?.querySelector(`[data-rail-num="${scoreGuideNum}"]`);
+      if (!el || !scrollRef.current) return;
+      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [scoreGuideNum]);
+
   const anchorNum = liveNums[0] ?? nextNum;
   let lastDate = null;
 
   return (
-    <div className="prediction-rail">
+    <div className="prediction-rail-shell">
+      {showRailLabel && <RailGuideLabel />}
+      <div className="prediction-rail">
       <button
         type="button"
         className="prediction-rail__nav"
@@ -2274,8 +2441,8 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
             ? (slotKey ? winners[slotKey] : null)
             : winners[railKey];
           const actualId = isKnockout
-            ? (slotKey ? actual[slotKey] : null)
-            : (m.status === "played" && m.winner ? m.winner.id : null);
+            ? (slotKey && isMatchScorable(m, lockTimeMs) ? actual[slotKey] : null)
+            : (m.status === "played" && m.winner && isMatchScorable(m, lockTimeMs) ? m.winner.id : null);
           const scorePrediction = isKnockout
             ? (slotKey ? getScorePrediction(winners, slotKey) : null)
             : getScorePrediction(winners, railKey);
@@ -2288,13 +2455,14 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
             isKnockout,
             isKnockout ? (roundPoints?.[slotKey] || 1) : 1,
             teamById,
-            byNum
+            byNum,
+            lockTimeMs
           ) : null;
 
           return (
             <React.Fragment key={m.num}>
               {dayChip}
-              <div ref={m.num === anchorNum ? anchorRef : undefined} className="shrink-0" data-rail-card>
+              <div ref={m.num === anchorNum ? anchorRef : undefined} className="shrink-0" data-rail-card data-rail-num={m.num}>
                 <RailCard
                   match={m}
                   index={i}
@@ -2302,6 +2470,7 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
                   actualTeam={actualId ? teamById.get(actualId) ?? null : null}
                   isLive={liveNums.includes(m.num)}
                   isNext={m.num === nextNum}
+                  isGuide={showScoreGuide && m.num === scoreGuideNum}
                   revealGrades={revealGrades}
                   onClick={() => onOpenMatch(m)}
                   isKnockout={isKnockout}
@@ -2326,6 +2495,7 @@ function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actua
       >
         ›
       </button>
+      </div>
     </div>
   );
 }
@@ -2463,7 +2633,7 @@ function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onOpenLock
 // ----------------------------------------------------------------------------
 // POINTS PILL — centered above the final column + compact popover.
 // ----------------------------------------------------------------------------
-function PointsPill({ stats }) {
+function PointsPill({ stats, showPoints = true }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   // Use totalPoints (includes score prediction points) instead of just points
@@ -2492,28 +2662,31 @@ function PointsPill({ stats }) {
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => showPoints && setOpen((v) => !v)}
         className="points-pill"
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="Tap for points breakdown"
+        title={showPoints ? "Tap for points breakdown" : "Lock your picks to earn points"}
+        disabled={!showPoints}
       >
         <span className="points-pill__label">Points:</span>
-        <span className="points-pill__value">{totalPoints}</span>
-        {hasScorePoints && (
+        <span className="points-pill__value">{showPoints ? totalPoints : "—"}</span>
+        {showPoints && hasScorePoints && (
           <span className="ml-1 rounded-full bg-[var(--gold)]/20 px-1.5 py-0.5 text-[9px] font-bold text-[var(--gold-bright)]">
             +{scorePoints}
           </span>
         )}
-        {(stats.railScoreOneSide > 0 || stats.railScoreExact > 0) && (
+        {showPoints && (stats.railScoreOneSide > 0 || stats.railScoreExact > 0) && (
           <span className="ml-1 rounded-full bg-[var(--pitch-glow)]/20 px-1.5 py-0.5 text-[9px] font-bold text-[var(--pitch-glow)]">
             R+{stats.railScorePoints ?? 0}
           </span>
         )}
-        <IconChevronDown className={["points-pill__chevron", open ? "rotate-180" : ""].join(" ")} />
+        {showPoints && (
+          <IconChevronDown className={["points-pill__chevron", open ? "rotate-180" : ""].join(" ")} />
+        )}
       </button>
 
-      {open && (
+      {showPoints && open && (
         <div className="points-popover points-popover--compact" role="dialog" aria-label="Points breakdown">
           <p className="points-popover__hint">Finished matches only · later rounds worth more</p>
           <ul className="points-popover__list">
@@ -2622,7 +2795,7 @@ function BootLoadingOverlay({ label = "Loading" }) {
 // ----------------------------------------------------------------------------
 // SCROLLABLE BRACKET — left→right, all rounds, horizontal scroll.
 // ----------------------------------------------------------------------------
-function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, colRef, readOnly = false, revealGrades = false, isViewingOther, viewerName, teamById, byNum }) {
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, colRef, readOnly = false, revealGrades = false, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null }) {
   const round = ROUNDS[roundIdx];
   const rowsPerMatch = BRACKET_ROWS / indices.length;
   return (
@@ -2645,7 +2818,8 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
             true, // isKnockout
             round.points,
             teamById,
-            byNum
+            byNum,
+            lockTimeMs
           ) : null;
 
           return (
@@ -2660,7 +2834,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 actualId={actual[rk]}
                 match={match}
                 align={align}
-                highlight={rk === liveKey ? "live" : rk === nextKey ? "next" : null}
+                highlight={bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey })}
                 onFlagClick={onFlagClick}
                 onOpenMatch={onOpenMatch}
                 readOnly={readOnly}
@@ -2678,7 +2852,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
   );
 }
 
-function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum }) {
+function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, showPoints = true, showGuideBanner = false, pickProgress }) {
   // Connector verdict per side: left = first half of the round, right = second.
   const verdictsFor = (roundIdx, side) => {
     const half = ROUNDS[roundIdx].matches / 2;
@@ -2693,10 +2867,23 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
     return Array.from({ length: half }, (_, i) => base + i);
   };
 
-  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum };
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs, showPoints };
+
+  useEffect(() => {
+    if (!guidanceKey) return;
+    const timer = window.setTimeout(() => {
+      document.querySelector(`[data-bracket-slot="${guidanceKey}"]`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center",
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [guidanceKey]);
 
   return (
-    <>
+    <div className="bracket-stack">
+      {showGuideBanner && <BracketGuideLabel />}
       <div className="bracket-viewport">
         <div className="bracket-tree flex items-stretch gap-0">
           {/* LEFT half of the tree */}
@@ -2735,7 +2922,7 @@ function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampio
           <BracketColumn roundIdx={0} indices={sideIdx(0, "right")} align="right" {...shared} />
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2963,86 +3150,128 @@ function NameModal({ onSubmit, onConnectGoogle, linkingGoogle }) {
   );
 }
 
-function FriendsModal({ open, onClose, friends, currentUid, activeUid, onSelect }) {
+function ViewerDrawerRankedRow({ friend, rank, isMe, isActive, onSelect }) {
+  const hasGraded = friend.total > 0;
+  const rankClass =
+    rank === 1 ? "viewer-drawer-row__rank--1" : rank <= 3 ? `viewer-drawer-row__rank--${rank}` : "";
+
   return (
-    <Modal open={open} onClose={onClose} maxW="max-w-md">
-      <div className="flex flex-col">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(friend)}
+        className={["viewer-drawer-row", isActive && "viewer-drawer-row--active"].filter(Boolean).join(" ")}
+        aria-current={isActive ? "true" : undefined}
+      >
+        <span className={["viewer-drawer-row__rank", rankClass].filter(Boolean).join(" ")}>{rank}</span>
+        <span className="viewer-drawer-row__main">
+          <span className="viewer-drawer-row__name-line">
+            <span className="viewer-drawer-row__name">{friend.name}</span>
+            {isMe && <span className="viewer-drawer-row__tag">you</span>}
+          </span>
+          <span className="viewer-drawer-row__stat">
+            {hasGraded ? `${friend.correct}/${friend.total} correct` : "No graded picks"}
+          </span>
+        </span>
+        <span className="viewer-drawer-row__score">
+          <span className="viewer-drawer-row__pts">{friend.points}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function ViewerDrawerOpenRow({ friend, isMe, isActive, onSelect }) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(friend)}
+        className={["viewer-drawer-row viewer-drawer-row--open", isActive && "viewer-drawer-row--active"].filter(Boolean).join(" ")}
+        aria-current={isActive ? "true" : undefined}
+      >
+        <span className="viewer-drawer-row__main">
+          <span className="viewer-drawer-row__name-line">
+            <span className="viewer-drawer-row__name">{friend.name}</span>
+            {isMe && <span className="viewer-drawer-row__tag">you</span>}
+          </span>
+        </span>
+        <span className="viewer-drawer-row__open-badge">Open</span>
+      </button>
+    </li>
+  );
+}
+
+function FriendsModal({ open, onClose, friends, currentUid, activeUid, onSelect }) {
+  const lockedFriends = friends.filter((f) => f.locked);
+  const openFriends = friends.filter((f) => !f.locked);
+
+  return (
+    <Drawer open={open} onClose={onClose} width="max-w-[300px]">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="viewer-drawer-header">
           <div>
-            <h2 className="font-display text-xl tracking-wider">Switch viewer</h2>
-            <p className="mt-0.5 text-[10px] font-semibold text-[var(--text-muted)]">Ranked by correct picks</p>
+            <h2 className="viewer-drawer-header__title">Switch viewer</h2>
+            <p className="viewer-drawer-header__meta">
+              {friends.length > 0
+                ? `${lockedFriends.length} locked · ${openFriends.length} still editing`
+                : "Pick a bracket to view"}
+            </p>
           </div>
-          <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 place-items-center rounded-lg text-sm" aria-label="Close">
+          <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm" aria-label="Close">
             ✕
           </button>
         </div>
-        <div className="max-h-[min(60vh,420px)] overflow-y-auto p-3">
+
+        <div className="viewer-drawer-body">
           {friends.length === 0 ? (
-            <p className="px-2 py-8 text-center text-sm text-[var(--text-muted)]">No predictions yet — be the first!</p>
+            <p className="viewer-drawer-empty">No predictions yet — be the first!</p>
           ) : (
-            <ul className="flex flex-col gap-1">
-              {friends.map((friend, idx) => {
-                const isMe = friend.uid === currentUid;
-                const isActive = friend.uid === activeUid;
-                const hasGraded = friend.total > 0;
-                return (
-                  <li key={friend.uid}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(friend)}
-                      className={[
-                        "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]",
-                        isActive ? "bg-[var(--pitch)]/12 ring-1 ring-[var(--pitch-glow)]/25" : "",
-                      ].join(" ")}
-                    >
-                      <span
-                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-black tabular-nums ${
-                          idx === 0
-                            ? "bg-[var(--gold)]/20 text-[var(--gold-bright)]"
-                            : idx === 1
-                              ? "bg-white/8 text-[var(--text-secondary)]"
-                              : idx === 2
-                                ? "bg-white/5 text-[var(--text-muted)]"
-                                : "text-[var(--text-muted)]"
-                        }`}
-                      >
-                        {idx + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text-primary)]">
-                          <span className="truncate">{friend.name}</span>
-                          {friend.locked ? (
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--gold-bright)]" title="Locked">
-                              <IconLock className="h-2.5 w-2.5" />
-                              Locked
-                            </span>
-                          ) : (
-                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-[var(--pitch-glow)]">Open</span>
-                          )}
-                          {isMe && (
-                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--pitch-glow)]">You</span>
-                          )}
-                          {isActive && (
-                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Viewing</span>
-                          )}
-                        </span>
-                        <span className="text-[10px] font-medium text-[var(--text-muted)]">
-                          {hasGraded ? `${friend.correct}/${friend.total} correct` : "No graded picks yet"}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="font-display text-lg leading-none tracking-wider text-[var(--gold-bright)]">{friend.points}</span>
-                        <span className="block text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">pts</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              {lockedFriends.length > 0 && (
+                <section className="viewer-drawer-section">
+                  <p className="viewer-drawer-section__label">Leaderboard</p>
+                  <div className="viewer-drawer-columns" aria-hidden="true">
+                    <span>#</span>
+                    <span>Player</span>
+                    <span className="viewer-drawer-columns__pts">Pts</span>
+                  </div>
+                  <ul className="viewer-drawer-list">
+                    {lockedFriends.map((friend, idx) => (
+                      <ViewerDrawerRankedRow
+                        key={friend.uid}
+                        friend={friend}
+                        rank={idx + 1}
+                        isMe={friend.uid === currentUid}
+                        isActive={friend.uid === activeUid}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {openFriends.length > 0 && (
+                <section className="viewer-drawer-section">
+                  <p className="viewer-drawer-section__label">Still editing · {openFriends.length}</p>
+                  <ul className="viewer-drawer-list">
+                    {openFriends.map((friend) => (
+                      <ViewerDrawerOpenRow
+                        key={friend.uid}
+                        friend={friend}
+                        isMe={friend.uid === currentUid}
+                        isActive={friend.uid === activeUid}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -3094,9 +3323,10 @@ export default function App() {
   const [confetti, setConfetti] = useState(false);
   const [teamModal, setTeamModal] = useState(null);
   const [matchModal, setMatchModal] = useState(null);
+  const [bracketGuideCount, setBracketGuideCount] = useState(0);
+  const [railScoreGuideCount, setRailScoreGuideCount] = useState(0);
   const prevChampRef = useRef(null);
-  const { matches, byNum, r32Teams, journeys, loading, lastUpdated, error } = useWorldCup();
-
+  const skipStarterSeedRef = useRef(false);
   const onRemoteWinners = useCallback((remote, { force } = {}) => {
     setWinners((local) => {
       if (force) return remote;
@@ -3120,14 +3350,18 @@ export default function App() {
     isAnonymous,
     linkingGoogle,
     locked,
+    lockedAt,
     locking,
     lockPredictions,
     friends,
+    friendsReady,
     viewingFriend,
     viewFriend,
     exitFriendView,
     readOnly,
   } = usePredictions(winners, { onRemoteWinners });
+
+  const { matches, byNum, r32Teams, journeys, loading, lastUpdated, error } = useWorldCup(authReady);
 
   const teams = r32Teams ?? [];
   const selfPrediction = useMemo(() => friends.find((f) => f.uid === uid) ?? null, [friends, uid]);
@@ -3196,6 +3430,18 @@ export default function App() {
     }
   }, [teams.length, locked]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Seed a starter bracket for new users with no saved picks.
+  useEffect(() => {
+    if (skipStarterSeedRef.current || locked || viewingFriend || needsName || !profileLoaded) return;
+    if (teams.length !== 32) return;
+    if (selfPrediction && hasBracketPicks(selfPrediction.winners)) return;
+
+    setWinners((prev) => {
+      if (hasBracketPicks(prev)) return prev;
+      return buildStarterWinners(teams, slotMatches);
+    });
+  }, [teams, slotMatches, profileLoaded, needsName, locked, viewingFriend, selfPrediction]);
+
   // Predictions are saved to Firebase only - localStorage disabled
 
   const isViewingSelf = !viewingFriend;
@@ -3203,7 +3449,18 @@ export default function App() {
   const activeViewerLocked = viewingFriend ? viewingFriend.locked : locked;
   const activeUid = viewingFriend?.uid ?? uid;
 
+  const railScoreGuideMatch = useMemo(() => {
+    if (!locked || viewingFriend) return null;
+    return findRailScoreGuideMatch(railMatches, displayWinners, numToSlot);
+  }, [locked, viewingFriend, railMatches, displayWinners, numToSlot]);
+  const showRailScoreGuide = isViewingSelf && !!railScoreGuideMatch && railScoreGuideCount < GUIDE_MAX_INTERACTIONS;
+  const showBracketGuide = isViewingSelf && !locked && bracketGuideCount < GUIDE_MAX_INTERACTIONS;
+
   const pickProgress = useMemo(() => getPickProgress(winners), [winners]);
+  const guidanceKey = useMemo(() => {
+    if (!showBracketGuide || teams.length !== 32) return null;
+    return findGuidancePickKey(displayWinners, teams, actual, slotMatches, nextMatch, numToSlot);
+  }, [showBracketGuide, teams.length, displayWinners, actual, slotMatches, nextMatch, numToSlot]);
   const lockTooltip = pickProgress.complete
     ? "Lock your picks permanently"
     : `Complete all ${pickProgress.total} matchups before locking (${pickProgress.filled}/${pickProgress.total} picked)`;
@@ -3230,18 +3487,23 @@ export default function App() {
     (roundIdx, matchIdx, team) => {
       if (!canEdit || locked) return;
       const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
+      let isNewPick = false;
       setWinners((prev) => {
+        isNewPick = !prev[rk];
         const next = { ...prev };
         if (next[rk] === team.id) {
           delete next[rk];
-          // Also clear score prediction when winner is cleared
           delete next[rk + SCORE_SUFFIX];
+          isNewPick = false;
         } else {
           next[rk] = team.id;
         }
         const normalized = normalize(next, teams);
         return normalizeScores(normalized, teams);
       });
+      if (isNewPick) {
+        setBracketGuideCount((c) => Math.min(c + 1, GUIDE_MAX_INTERACTIONS));
+      }
     },
     [teams, canEdit, locked]
   );
@@ -3260,6 +3522,8 @@ export default function App() {
 
   const resetBracket = useCallback(() => {
     if (locked) return;
+    skipStarterSeedRef.current = true;
+    setBracketGuideCount(0);
     setWinners({});
     prevChampRef.current = null;
     // Predictions are saved to Firebase only - no localStorage to clear
@@ -3287,12 +3551,28 @@ export default function App() {
   }, []);
 
   const saveScorePrediction = useCallback((slotKey, score) => {
-    setWinners((prev) => normalizeScores(setScorePrediction(prev, slotKey, score), teams));
+    let isNewScore = false;
+    setWinners((prev) => {
+      isNewScore = !getScorePrediction(prev, slotKey);
+      return normalizeScores(setScorePrediction(prev, slotKey, score), teams);
+    });
+    if (isNewScore) {
+      setRailScoreGuideCount((c) => Math.min(c + 1, GUIDE_MAX_INTERACTIONS));
+    }
     return true;
   }, [teams]);
 
+  const activeLockTimeMs = viewingFriend ? viewingFriend.lockedAt : lockedAt;
+  const scorableActual = useMemo(
+    () => buildScorableActual(actual, slotMatches, activeLockTimeMs),
+    [actual, slotMatches, activeLockTimeMs]
+  );
+
   // Grade picks against real results as they land. Include slotMatches for score prediction grading.
-  const stats = useMemo(() => gradeWinners(displayWinners, actual, slotMatches), [displayWinners, actual, slotMatches]);
+  const stats = useMemo(
+    () => gradeWinners(displayWinners, actual, slotMatches, activeLockTimeMs),
+    [displayWinners, actual, slotMatches, activeLockTimeMs]
+  );
 
   // Grade rail game predictions (non-knockout games with rail- prefix)
   const railStats = useMemo(() => {
@@ -3303,6 +3583,7 @@ export default function App() {
       const matchNum = parseInt(key.replace("rail-", ""), 10);
       const match = byNum.get(matchNum);
       if (!match || match.status !== "played" || !match.winner) continue;
+      if (!isMatchScorable(match, activeLockTimeMs)) continue;
 
       total++;
       const predictedWinner = displayWinners[key];
@@ -3322,7 +3603,7 @@ export default function App() {
     }
 
     return { correct, total, scoreOneSide, scoreExact, scorePoints, points: correct * 1 + scorePoints };
-  }, [displayWinners, byNum]);
+  }, [displayWinners, byNum, activeLockTimeMs]);
 
   // Combined stats including both bracket and rail predictions
   const combinedStats = useMemo(() => ({
@@ -3339,7 +3620,7 @@ export default function App() {
     () =>
       friends
         .map((friend) => {
-          const graded = gradeWinners(friend.winners, actual, slotMatches);
+          const graded = gradeWinners(friend.winners, actual, slotMatches, friend.lockedAt);
           // Calculate friend's rail stats with tiered scoring
           const friendRailKeys = Object.keys(friend.winners).filter(k => k.startsWith("rail-"));
           let railCorrect = 0, railTotal = 0, railScoreOneSide = 0, railScoreExact = 0, railScorePoints = 0;
@@ -3347,6 +3628,7 @@ export default function App() {
             const matchNum = parseInt(key.replace("rail-", ""), 10);
             const match = byNum.get(matchNum);
             if (!match || match.status !== "played" || !match.winner) continue;
+            if (!isMatchScorable(match, friend.lockedAt)) continue;
             railTotal++;
             if (friend.winners[key] === match.winner.id) railCorrect++;
 
@@ -3375,13 +3657,16 @@ export default function App() {
             points: (graded.totalPoints ?? graded.points) + railPoints,
           };
         })
-        .sort(
-          (a, b) =>
+        .sort((a, b) => {
+          if (a.locked !== b.locked) return a.locked ? -1 : 1;
+          if (!a.locked && !b.locked) return a.name.localeCompare(b.name);
+          return (
             b.correct - a.correct ||
             b.points - a.points ||
             b.total - a.total ||
             a.name.localeCompare(b.name)
-        ),
+          );
+        }),
     [friends, actual, slotMatches, byNum]
   );
 
@@ -3391,7 +3676,7 @@ export default function App() {
     winners: displayWinners,
     teams,
     onPick,
-    actual,
+    actual: scorableActual,
     slotMatches,
     liveKey,
     nextKey,
@@ -3403,13 +3688,14 @@ export default function App() {
     viewerName: viewingFriend?.name,
     teamById,
     byNum,
+    lockTimeMs: activeLockTimeMs,
   };
   const showBracket = teams.length === 32;
   const docsLoading = !!uid && !profileLoaded;
-  const appLoading = !needsName && (!authReady || docsLoading || loading);
+  const appLoading = !authReady || !friendsReady || docsLoading || loading;
   const bootLabel = !authReady
     ? "Signing in"
-    : docsLoading
+    : !friendsReady || docsLoading
       ? "Loading predictions"
       : "Loading tournament";
 
@@ -3435,7 +3721,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {authReady && profileLoaded && needsName && (
+      {!appLoading && authReady && profileLoaded && needsName && (
         <NameModal onSubmit={submitName} onConnectGoogle={connectGoogle} linkingGoogle={linkingGoogle} />
       )}
       <FriendsModal
@@ -3483,6 +3769,8 @@ export default function App() {
         selfUid={uid}
       />
 
+      {!appLoading && (
+        <>
       {/* HEADER */}
       <header className="broadcast-bar shrink-0 z-40">
         <div className="relative mx-auto max-w-[1900px] px-4 py-2.5">
@@ -3558,6 +3846,10 @@ export default function App() {
             champion={champion}
             actualChampion={actualChampion}
             stats={displayStats}
+            showPoints={activeViewerLocked}
+            guidanceKey={guidanceKey}
+            showGuideBanner={showBracketGuide}
+            pickProgress={pickProgress}
           />
         )}
       </main>
@@ -3569,7 +3861,7 @@ export default function App() {
           nextNum={nextMatch?.num ?? null}
           numToSlot={numToSlot}
           winners={displayWinners}
-          actual={actual}
+          actual={scorableActual}
           teams={teams}
           revealGrades={true} // Always show grading for played matches
           onOpenMatch={setMatchModal}
@@ -3589,6 +3881,11 @@ export default function App() {
           byNum={byNum}
           isViewingOther={!!viewingFriend}
           viewerName={viewingFriend?.name}
+          lockTimeMs={activeLockTimeMs}
+          showRailLabel={isViewingSelf && locked}
+          showScoreGuide={showRailScoreGuide}
+          scoreGuideNum={railScoreGuideMatch?.num ?? null}
+          scoreGuideMatch={railScoreGuideMatch}
           roundPoints={ROUNDS.reduce((acc, r) => {
             for (let m = 0; m < r.matches; m++) {
               acc[key(r.key, m)] = r.points;
@@ -3611,6 +3908,8 @@ export default function App() {
             </>
           )}
         </footer>
+      )}
+        </>
       )}
     </div>
   );

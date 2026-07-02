@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { linkWithPopup, onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  GoogleAuthProvider,
+  linkWithPopup,
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithCredential,
+} from "firebase/auth";
 import { auth, db, googleProvider, PREDICTIONS_COLLECTION } from "../firebase";
 
 const SAVE_DEBOUNCE_MS = 3000;
@@ -12,6 +18,8 @@ function mapPredictionDoc(id, data) {
     name: trimmedName,
     winners: data.winners || {},
     locked: !!data.locked,
+    lockedAt: data.lockedAt?.toMillis?.() ?? null,
+    abandoned: !!data.abandoned,
     updatedAt: data.updatedAt?.toMillis?.() ?? 0,
   };
 }
@@ -28,7 +36,7 @@ function formatSyncError(err, context = "save") {
     return "Firestore denied the save. Check that you're signed in and rules allow writes to your own predictions doc.";
   }
   if (code === "auth/credential-already-in-use") {
-    return "This Google account is already linked to another profile.";
+    return "Could not connect Google account. Try again.";
   }
   if (code === "auth/popup-closed-by-user") {
     return "";
@@ -43,6 +51,54 @@ function winnersJson(winners) {
   return JSON.stringify(winners ?? {});
 }
 
+function mergeWinners(existing = {}, incoming = {}) {
+  return { ...existing, ...incoming };
+}
+
+async function abandonAnonymousProfile(anonymousUid, { name, winners }) {
+  await setDoc(
+    doc(db, PREDICTIONS_COLLECTION, anonymousUid),
+    {
+      uid: anonymousUid,
+      name: name || "Anonymous",
+      winners,
+      locked: true,
+      abandoned: true,
+      abandonedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function migratePredictionsToGoogleAccount(
+  googleUid,
+  { anonymousUid, localWinners, localName, displayName, anonymousWasLocked }
+) {
+  const googleDocSnap = await getDoc(doc(db, PREDICTIONS_COLLECTION, googleUid));
+  const googleData = googleDocSnap.exists() ? googleDocSnap.data() : {};
+  const mergedWinners = mergeWinners(googleData.winners, localWinners);
+  const mergedName = googleData.name?.trim() || displayName?.trim() || localName?.trim() || "";
+  const mergedLocked = !!googleData.locked || anonymousWasLocked;
+
+  await setDoc(
+    doc(db, PREDICTIONS_COLLECTION, googleUid),
+    {
+      uid: googleUid,
+      name: mergedName,
+      winners: mergedWinners,
+      locked: mergedLocked,
+      ...(mergedLocked && !googleData.locked ? { lockedAt: serverTimestamp() } : {}),
+      migratedFrom: anonymousUid,
+      migratedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { mergedWinners, mergedName, wasLocked: mergedLocked };
+}
+
 export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}) {
   const [uid, setUid] = useState(null);
   const [name, setName] = useState("");
@@ -53,8 +109,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const [syncError, setSyncError] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [lockedAt, setLockedAt] = useState(null);
   const [locking, setLocking] = useState(false);
   const [friends, setFriends] = useState([]);
+  const [friendsReady, setFriendsReady] = useState(false);
   const [viewingFriendUid, setViewingFriendUid] = useState(null);
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
@@ -135,21 +193,26 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
   // Always-on realtime listener for every prediction doc.
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setFriendsReady(true);
+      return;
+    }
 
     const unsub = onSnapshot(
       collection(db, PREDICTIONS_COLLECTION),
       (snap) => {
         const list = snap.docs
           .map((d) => mapPredictionDoc(d.id, d.data()))
-          .filter((f) => f.name)
+          .filter((f) => f.name && !f.abandoned)
           .sort((a, b) => a.name.localeCompare(b.name));
         setFriends(list);
+        setFriendsReady(true);
       },
       (err) => {
         console.error("[WC26] Firestore listener error:", err);
         setSyncError(formatSyncError(err, "listen"));
         setFriends([]);
+        setFriendsReady(true);
         if (uidRef.current) {
           setProfileLoaded(true);
           setNeedsName(true);
@@ -160,9 +223,9 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     return unsub;
   }, [enabled]);
 
-  // Resolve the signed-in user's profile once auth uid and the friends list are available.
+  // Resolve the signed-in user's profile once auth uid and the first Firestore snapshot are in.
   useEffect(() => {
-    if (!enabled || !uid) return;
+    if (!enabled || !uid || !friendsReady) return;
 
     setProfileLoaded(true);
 
@@ -172,6 +235,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       loadedRemoteRef.current = true;
       setName("");
       setNeedsName(true);
+      setLockedAt(null);
       return;
     }
 
@@ -186,6 +250,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       lockedRef.current = false;
       setLocked(false);
     }
+    setLockedAt(self.lockedAt ?? null);
 
     const remoteWinners = self.winners;
     const hasRemote = Object.keys(remoteWinners).length > 0;
@@ -223,7 +288,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
     loadedRemoteRef.current = true;
     wasLockedRef.current = isLocked || lockedRef.current;
-  }, [enabled, uid, friends]);
+  }, [enabled, uid, friends, friendsReady]);
 
   // Debounced save only when local picks actually differ from last persisted snapshot.
   useEffect(() => {
@@ -281,9 +346,61 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         setUid(user.uid);
       }
 
+      const localWinners = { ...winnersRef.current };
+      const localName = nameRef.current?.trim() || "";
+
       if (user.isAnonymous) {
-        const result = await linkWithPopup(user, googleProvider);
-        user = result.user;
+        const anonymousUid = user.uid;
+
+        try {
+          const result = await linkWithPopup(user, googleProvider);
+          user = result.user;
+        } catch (linkErr) {
+          if (linkErr?.code !== "auth/credential-already-in-use") throw linkErr;
+
+          const pendingCred = GoogleAuthProvider.credentialFromError(linkErr);
+          if (!pendingCred) throw linkErr;
+
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+          await abandonAnonymousProfile(anonymousUid, { name: localName, winners: localWinners });
+
+          const signInResult = await signInWithCredential(auth, pendingCred);
+          user = signInResult.user;
+
+          const { mergedWinners, mergedName, wasLocked } = await migratePredictionsToGoogleAccount(user.uid, {
+            anonymousUid,
+            localWinners,
+            localName,
+            displayName: user.displayName,
+            anonymousWasLocked: lockedRef.current,
+          });
+
+          setUid(user.uid);
+          setIsAnonymous(false);
+          setName(mergedName);
+          setNeedsName(!mergedName);
+          lockedRef.current = wasLocked;
+          setLocked(wasLocked);
+          loadedRemoteRef.current = true;
+          lastPersistedJsonRef.current = winnersJson(mergedWinners);
+          wasLockedRef.current = wasLocked;
+
+          if (Object.keys(mergedWinners).length > 0) {
+            onRemoteWinnersRef.current?.(mergedWinners, { force: true });
+          }
+
+          if (submitNameAfter && !mergedName) {
+            const displayName = user.displayName?.trim() || "";
+            if (displayName) {
+              const ok = await submitName(displayName);
+              return ok ? { success: true, merged: true } : { success: false };
+            }
+            return { needsManualName: true };
+          }
+
+          return { success: true, merged: true };
+        }
       }
 
       setIsAnonymous(user.isAnonymous);
@@ -314,6 +431,8 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   useEffect(() => {
     if (!enabled) {
       setAuthReady(true);
+      setFriendsReady(true);
+      setProfileLoaded(true);
       return;
     }
 
@@ -373,6 +492,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       );
       lastPersistedJsonRef.current = payloadJson;
       wasLockedRef.current = true;
+      setLockedAt(Date.now());
       setSyncError(null);
       return true;
     } catch (err) {
@@ -416,9 +536,11 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     isAnonymous,
     linkingGoogle,
     locked,
+    lockedAt,
     locking,
     lockPredictions,
     friends,
+    friendsReady,
     viewingFriend,
     viewFriend,
     exitFriendView,
