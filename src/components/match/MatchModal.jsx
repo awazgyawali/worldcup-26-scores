@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Modal } from "../common/Modal";
 import { Countdown } from "../common/Countdown";
 import { isRef } from "../../lib/teams";
 import {
   friendScorePredictionsForMatch,
+  getScorePrediction,
   gradeScorePrediction,
   mapPredictedScores,
 } from "../../lib/scoring";
@@ -174,8 +175,81 @@ function ScoreNumbers({ a, b, ftScore, graded }) {
   );
 }
 
+function matchTabKey(m, numToSlot) {
+  return m.isKnockout ? numToSlot?.get(m.num) : `rail-${m.num}`;
+}
+
+function MatchTabPill({ m, active, winners, numToSlot, onSelect }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [active]);
+
+  const played = m.status === "played";
+  const key = matchTabKey(m, numToSlot);
+  const predictedScore = key ? getScorePrediction(winners, key) : null;
+  const scoreLabel = played
+    ? m.score
+      ? `${m.score[0]}–${m.score[1]}`
+      : null
+    : predictedScore
+      ? `${predictedScore[0]}–${predictedScore[1]}`
+      : null;
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(m)}
+      className={[
+        "match-tab-pill snap-start",
+        active ? "match-tab-pill--active" : "",
+        played ? "match-tab-pill--played" : predictedScore ? "match-tab-pill--predicted" : "",
+      ].join(" ")}
+      aria-current={active ? "true" : undefined}
+      title={`${m.team1?.name ?? "TBD"} vs ${m.team2?.name ?? "TBD"}`}
+    >
+      {m.team1 ? (
+        <img src={flagSrc(m.team1.iso2, 40)} alt="" className="match-tab-pill__flag" />
+      ) : (
+        <span className="match-tab-pill__flag match-tab-pill__flag--empty">·</span>
+      )}
+      <span className="match-tab-pill__score">{scoreLabel ?? "vs"}</span>
+      {m.team2 ? (
+        <img src={flagSrc(m.team2.iso2, 40)} alt="" className="match-tab-pill__flag" />
+      ) : (
+        <span className="match-tab-pill__flag match-tab-pill__flag--empty">·</span>
+      )}
+    </button>
+  );
+}
+
+function MatchTabs({ matches, activeMatch, winners, numToSlot, onSelect }) {
+  const scrollRef = useRef(null);
+  if (!matches || matches.length === 0 || !activeMatch) return null;
+
+  return (
+    <div ref={scrollRef} className="match-tabs nice-scroll edge-fade-x snap-x">
+      {matches.map((m) => (
+        <MatchTabPill
+          key={m.num}
+          m={m}
+          active={m.num === activeMatch.num}
+          winners={winners}
+          numToSlot={numToSlot}
+          onSelect={onSelect}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function MatchModal({
   match,
+  matches = [],
+  onSelectMatch,
+  winners,
+  numToSlot,
   onClose,
   onFlagClick,
   scorePrediction,
@@ -198,6 +272,23 @@ export function MatchModal({
     setScoreA(scorePrediction?.[0] ?? "");
     setScoreB(scorePrediction?.[1] ?? "");
   }, [scorePrediction]);
+
+  useEffect(() => {
+    if (!match || !onSelectMatch || matches.length === 0) return;
+    const onKey = (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const idx = matches.findIndex((m) => m.num === match.num);
+      if (idx === -1) return;
+      const nextIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
+      if (nextIdx < 0 || nextIdx >= matches.length) return;
+      e.preventDefault();
+      onSelectMatch(matches[nextIdx]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [match, matches, onSelectMatch]);
 
   if (!match) return null;
 
@@ -266,6 +357,16 @@ export function MatchModal({
           ✕
         </button>
       </div>
+
+      {matches.length > 0 && onSelectMatch && (
+        <MatchTabs
+          matches={matches}
+          activeMatch={match}
+          winners={winners}
+          numToSlot={numToSlot}
+          onSelect={onSelectMatch}
+        />
+      )}
 
       <div className="nice-scroll relative flex-1 overflow-y-auto">
         <div className="flex items-start justify-center gap-3 px-4 pb-2 pt-5">

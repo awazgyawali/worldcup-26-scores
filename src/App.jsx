@@ -492,6 +492,10 @@ export default function App() {
       />
       <MatchModal
         match={matchModal}
+        matches={railMatches}
+        onSelectMatch={setMatchModal}
+        winners={displayWinners}
+        numToSlot={numToSlot}
         onClose={() => setMatchModal(null)}
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
         scorePrediction={matchModal ? (() => {

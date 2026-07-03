@@ -5,3 +5,71 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------------------------------------------------------------- match tabs (pill strip) */
+.match-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-mid);
+  scroll-padding-inline: 12px;
+}
+.match-tabs::-webkit-scrollbar { display: none; }
+
+.match-tab-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.match-tab-pill:hover {
+  border-color: var(--border-strong);
+}
+.match-tab-pill--active {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, var(--bg-elevated));
+}
+.match-tab-pill--played:not(.match-tab-pill--active) {
+  border-color: var(--border-strong);
+}
+.match-tab-pill--predicted:not(.match-tab-pill--active) {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--border));
+}
+
+.match-tab-pill__flag {
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.match-tab-pill__flag--empty {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--bg-deep);
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.match-tab-pill__score {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.match-tab-pill--active .match-tab-pill__score {
+  color: var(--gold-bright);
+}
+
