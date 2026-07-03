@@ -58,7 +58,7 @@ export function NameModal({ onSubmit, onConnectGoogle, linkingGoogle }) {
           <div className="flex items-center gap-3">
             <span className="text-2xl">⚽</span>
             <div>
-              <h2 className="font-display text-xl tracking-wider text-[var(--text-primary)]">WC26 Predictor</h2>
+              <h2 className="font-display text-xl tracking-wider text-[var(--text-primary)]">2xBet by Aawaz</h2>
               <p className="text-xs text-[var(--text-muted)]">World Cup 2026 Bracket Challenge</p>
             </div>
           </div>

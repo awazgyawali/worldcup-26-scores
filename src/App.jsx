@@ -292,7 +292,10 @@ export default function App() {
     setMatchModal(m);
   }, []);
 
-  const saveScorePrediction = useCallback((slotKey, score) => {
+  const saveScorePrediction = useCallback((slotKey, score, match) => {
+    if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
+      return false;
+    }
     let isNewScore = false;
     setWinners((prev) => {
       isNewScore = !getScorePrediction(prev, slotKey);
@@ -505,7 +508,8 @@ export default function App() {
             ? numToSlot.get(matchModal.num)
             : `rail-${matchModal.num}`;
           if (!key) return false;
-          return saveScorePrediction(key, score);
+          const freshMatch = byNum.get(matchModal.num) ?? matchModal;
+          return saveScorePrediction(key, score, freshMatch);
         }}
         slotKey={matchModal ? (matchModal.isKnockout ? numToSlot.get(matchModal.num) : `rail-${matchModal.num}`) : null}
         friends={friends}
@@ -522,8 +526,8 @@ export default function App() {
               <WCLogo className="h-9 w-9 shrink-0 drop-shadow-lg" />
               <div className="min-w-0 leading-tight">
                 <h1 className="font-display truncate text-xl tracking-wider sm:text-2xl">
-                  World Cup <span className="text-[var(--pitch-glow)]">26</span>
-                  <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">· Bracket Challenge</span>
+                  2x<span className="text-[var(--pitch-glow)]">Bet</span>
+                  <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">by Aawaz</span>
                 </h1>
                 <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">
                   {liveNums.length > 0 ? (

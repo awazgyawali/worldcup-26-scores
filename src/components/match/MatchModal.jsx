@@ -203,7 +203,8 @@ export function MatchModal({
 
   const played = match.status === "played";
   const live = match.status === "live";
-  const upcoming = match.status === "upcoming";
+  const kickoffPassed = !!match.kickoff && Date.now() >= match.kickoff.getTime();
+  const upcoming = match.status === "upcoming" && !kickoffPassed;
   const canEditScore = upcoming && !!onSaveScorePrediction;
 
   const showToast = (message, type = "success") => {
@@ -248,7 +249,7 @@ export function MatchModal({
       : 0;
   const actualFtScore = match.ftScore ?? match.score;
   const actualScoreDisplay = actualFtScore ? `${actualFtScore[0]}–${actualFtScore[1]}` : null;
-  const teamsConfirmed = match.team1 && match.team2 && !isRef(match.ref1) && !isRef(match.ref2);
+  const teamsConfirmed = !!match.team1 && !!match.team2;
   const resultLabel =
     match.phase === "aet" || match.phase === "pens" ? "Final score (90 min)" : "Final score";
 
