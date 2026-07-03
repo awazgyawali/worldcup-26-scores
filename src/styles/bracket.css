@@ -115,12 +115,22 @@
 }
 
 .bracket-stack {
+  position: relative;
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
   width: 100%;
+}
+
+.bracket-rail-guide-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 0.4rem;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
 }
 
 .bracket-guide-label {
