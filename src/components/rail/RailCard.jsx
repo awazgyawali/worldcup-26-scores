@@ -119,7 +119,7 @@ export function RailCard({ match, isLive, isNext, isGuide, pickTeam, actualTeam,
         </div>
       )}
       {/* Points earned — score prediction only on rail (bracket points show on bracket cards) */}
-      {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.scorePointsEarned > 0 && (
+      {predictionInfo?.matchPlayed && predictionInfo.scorePointsEarned > 0 && (
         <PointsEarnedBadge points={predictionInfo.scorePointsEarned} isRail />
       )}
 

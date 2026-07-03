@@ -85,9 +85,9 @@ export function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId
           Tap a team to pick your winner
         </div>
       )}
-      {/* Points earned — only after match is played */}
-      {isViewingOther && predictionInfo?.matchPlayed && predictionInfo.totalPoints > 0 && (
-        <PointsEarnedBadge points={predictionInfo.totalPoints} />
+      {/* Points earned — winner pick only; score prediction points show on the rail card */}
+      {predictionInfo?.matchPlayed && predictionInfo.pointsEarned > 0 && (
+        <PointsEarnedBadge points={predictionInfo.pointsEarned} />
       )}
 
       <TeamRow

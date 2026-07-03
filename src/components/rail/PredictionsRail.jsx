@@ -8,7 +8,7 @@ export function RailGuideLabel() {
   return <p className="rail-guide-label">Predict score on upcoming games</p>;
 }
 
-export function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner, byNum, isViewingOther, viewerName, roundPoints, lockTimeMs = null, showRailLabel = false, showScoreGuide = false, scoreGuideNum = null, scoreGuideMatch = null }) {
+export function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners, actual, teams, revealGrades, onOpenMatch, canEdit, onPickRailWinner, byNum, isViewingOther, viewerName, roundPoints, lockTimeMs = null, showScoreGuide = false, scoreGuideNum = null, scoreGuideMatch = null }) {
   const scrollRef = useRef(null);
   const anchorRef = useRef(null);
   const anchored = useRef(false);
@@ -71,7 +71,6 @@ export function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners
 
   return (
     <div className="prediction-rail-shell">
-      {showRailLabel && <RailGuideLabel />}
       <div className="prediction-rail">
       <button
         type="button"
@@ -106,8 +105,7 @@ export function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners
             ? (slotKey ? getScorePrediction(winners, slotKey) : null)
             : getScorePrediction(winners, railKey);
 
-          // Calculate prediction info for viewing others
-          const predictionInfo = isViewingOther ? getMatchPredictionInfo(
+          const predictionInfo = getMatchPredictionInfo(
             winners,
             m,
             slotKey,
@@ -116,7 +114,7 @@ export function PredictionsRail({ matches, liveNums, nextNum, numToSlot, winners
             teamById,
             byNum,
             lockTimeMs
-          ) : null;
+          );
 
           return (
             <React.Fragment key={m.num}>

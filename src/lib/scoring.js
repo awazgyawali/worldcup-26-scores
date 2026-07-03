@@ -11,12 +11,20 @@ export const CONNECTOR_STROKE = "rgba(100, 118, 140, 0.18)";
 export const CONNECTOR_STROKE_ACTIVE = "rgba(100, 118, 140, 0.32)";
 export const CONNECTOR_STROKE_LIT = "rgba(74, 222, 128, 0.82)";
 export const CONNECTOR_STROKE_WRONG = "rgba(248, 113, 113, 0.82)";
-export const CONNECTOR_STROKE_PRESET = "rgba(56, 189, 248, 0.82)";
+export const CONNECTOR_STROKE_PRESET = "rgba(255, 255, 255, 0.62)";
 
-export const connectorVerdictForSlot = (winners, slotMatches, slotKey, lockTimeMs) => {
+/** Verdict for the bracket connector line — reflects the winner pick (who advances),
+ *  not the score prediction: "correct" if the picked team actually won, "wrong" if not,
+ *  "preset" if the match was already played before the pick could count, else null.
+ */
+export const connectorVerdictForSlot = (winners, actual, slotMatches, slotKey, lockTimeMs) => {
   const match = slotMatches[slotKey];
-  const scorePrediction = getScorePrediction(winners, slotKey);
-  return getScoreVerdict(match, scorePrediction, lockTimeMs);
+  if (match?.status !== "played") return null;
+  if (!isMatchScorable(match, lockTimeMs)) return "preset";
+  const actualWinnerId = actual[slotKey];
+  const predictedWinnerId = winners[slotKey];
+  if (!actualWinnerId || !predictedWinnerId) return null;
+  return predictedWinnerId === actualWinnerId ? "correct" : "wrong";
 };
 
 export const connectorStroke = (verdict, readOnly = false) => {
@@ -68,7 +76,7 @@ export function friendScorePredictionsForMatch(friends, scoreKey, match, exclude
       const [a, b] = mapPredictedScores(raw, match.team1, match.team2, match);
       if (a == null || b == null) return null;
       const points = graded ? gradeScorePrediction(raw, match.ftScore).scorePoints : 0;
-      return { uid: f.uid, name: f.name, display: `${a}–${b}`, points };
+      return { uid: f.uid, name: f.name, display: `${a}–${b}`, home: a, away: b, points };
     })
     .filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -135,20 +143,6 @@ export function gradeScorePrediction(predictedScore, ftScore) {
   return { scoreResult: null, scorePoints: 0 };
 }
 
-/** Determine how to color the score prediction line for a played match.
- *  - "correct" if any part of the predicted score was right (green)
- *  - "wrong" if the prediction exists but was completely wrong (red)
- *  - "preset" if the match was played before the lock time (blue)
- *  - null for unplayed or unscored matches
- */
-export function getScoreVerdict(match, predictedScore, lockTimeMs) {
-  if (match?.status !== "played") return null;
-  const scorable = isMatchScorable(match, lockTimeMs);
-  if (!scorable) return "preset";
-  if (!predictedScore || !match.ftScore) return null;
-  const { scorePoints } = gradeScorePrediction(predictedScore, match.ftScore);
-  return scorePoints > 0 ? "correct" : "wrong";
-}
 
 /** Grade picks — points only for finished matches where the user made a pick.
  *  Score predictions on real fixtures are graded separately (2 / 5 pts).

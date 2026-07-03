@@ -24,8 +24,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
           const match = slotMatches[rk];
           const scorePrediction = getScorePrediction(winners, rk);
 
-          // Calculate prediction info for viewing others
-          const predictionInfo = isViewingOther ? getMatchPredictionInfo(
+          const predictionInfo = getMatchPredictionInfo(
             winners,
             match ?? { status: "upcoming" },
             rk,
@@ -34,7 +33,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
             teamById,
             byNum,
             lockTimeMs
-          ) : null;
+          );
 
           return (
             <div key={m} className="flex min-h-0 items-center" style={{ gridRow: `${rowStart} / ${rowStart + rowsPerMatch}` }}>
@@ -66,14 +65,14 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
   );
 }
 
-export function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, showPoints = true, showGuideBanner = false, pickProgress }) {
+export function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, showPoints = true, showGuideBanner = false, pickProgress, railGuideLabel = null }) {
   // Connector verdict per side: left = first half of the round, right = second.
   // Now colored by score-prediction status (green = correct, red = wrong, blue = preset).
   const verdictsFor = (roundIdx, side) => {
     const half = ROUNDS[roundIdx].matches / 2;
     const base = side === "left" ? 0 : half;
     return Array.from({ length: half }, (_, i) =>
-      connectorVerdictForSlot(winners, slotMatches, key(ROUNDS[roundIdx].key, base + i), lockTimeMs)
+      connectorVerdictForSlot(winners, actual, slotMatches, key(ROUNDS[roundIdx].key, base + i), lockTimeMs)
     );
   };
   const sideIdx = (roundIdx, side) => {
@@ -111,8 +110,8 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
           <BracketColumn roundIdx={3} indices={sideIdx(3, "left")} align="left" {...shared} />
           <SFPodiumConnector
             side="left"
-            finalVerdict={connectorVerdictForSlot(winners, slotMatches, key("sf", 0), lockTimeMs)}
-            thirdVerdict={connectorVerdictForSlot(winners, slotMatches, key("sf", 0), lockTimeMs)}
+            finalVerdict={connectorVerdictForSlot(winners, actual, slotMatches, key("sf", 0), lockTimeMs)}
+            thirdVerdict={connectorVerdictForSlot(winners, actual, slotMatches, key("sf", 0), lockTimeMs)}
             readOnly={readOnly}
           />
 
@@ -124,8 +123,8 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
           {/* RIGHT half of the tree (mirrored) */}
           <SFPodiumConnector
             side="right"
-            finalVerdict={connectorVerdictForSlot(winners, slotMatches, key("sf", 1), lockTimeMs)}
-            thirdVerdict={connectorVerdictForSlot(winners, slotMatches, key("sf", 1), lockTimeMs)}
+            finalVerdict={connectorVerdictForSlot(winners, actual, slotMatches, key("sf", 1), lockTimeMs)}
+            thirdVerdict={connectorVerdictForSlot(winners, actual, slotMatches, key("sf", 1), lockTimeMs)}
             readOnly={readOnly}
           />
           <BracketColumn roundIdx={3} indices={sideIdx(3, "right")} align="right" {...shared} />
@@ -137,6 +136,7 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
           <BracketColumn roundIdx={0} indices={sideIdx(0, "right")} align="right" {...shared} />
         </div>
       </div>
+      {railGuideLabel && <div className="bracket-rail-guide-overlay">{railGuideLabel}</div>}
     </div>
   );
 }

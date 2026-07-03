@@ -3,56 +3,116 @@ import { motion } from "framer-motion";
 import { Modal } from "../common/Modal";
 import { Countdown } from "../common/Countdown";
 import { isRef } from "../../lib/teams";
-import { friendScorePredictionsForMatch, formatScorePredictionDisplay, gradeScorePrediction } from "../../lib/scoring";
+import {
+  friendScorePredictionsForMatch,
+  gradeScorePrediction,
+  mapPredictedScores,
+} from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
+import { goalMatchPhase } from "../team/journeyHelpers";
 
 // ----------------------------------------------------------------------------
 // MATCH DETAIL MODAL — everything the JSON knows about one fixture.
 // ----------------------------------------------------------------------------
+function GoalTimelineCell({ goal, align }) {
+  return (
+    <span className={["journey-timeline__goal", `journey-timeline__goal--${align}`].join(" ")}>
+      <span className="journey-timeline__scorer">{goal.name}</span>
+      {goal.penalty && <span className="journey-goal__tag">PEN</span>}
+      {goal.owngoal && <span className="journey-goal__tag journey-goal__tag--og">OG</span>}
+    </span>
+  );
+}
+
+function GoalTimelineRow({ goal }) {
+  const isSide0 = goal.side === 0;
+  return (
+    <li className="journey-timeline__row">
+      <span className="journey-timeline__side journey-timeline__side--left">
+        {isSide0 && <GoalTimelineCell goal={goal} align="right" />}
+      </span>
+      <span className="journey-timeline__minute">{goal.minute}′</span>
+      <span className="journey-timeline__side journey-timeline__side--right">
+        {!isSide0 && <GoalTimelineCell goal={goal} align="left" />}
+      </span>
+    </li>
+  );
+}
+
+function GoalTimelineSection({ shortLabel, goals, emptyLabel, pensScore }) {
+  const hasGoals = goals.length > 0;
+  const hasPens = pensScore != null;
+  if (!hasGoals && !hasPens && !emptyLabel) return null;
+
+  return (
+    <div className="journey-timeline__section">
+      <div className="journey-timeline__header">
+        <span className="journey-timeline__header-line" aria-hidden />
+        <span className="journey-timeline__header-label">{shortLabel}</span>
+        <span className="journey-timeline__header-line" aria-hidden />
+      </div>
+
+      <div className="journey-timeline__track">
+        <div className="journey-timeline__spine" aria-hidden />
+
+        {hasGoals ? (
+          <ul className="journey-timeline__list">
+            {goals.map((g, i) => (
+              <GoalTimelineRow key={`${g.name}-${g.minute}-${i}`} goal={g} />
+            ))}
+          </ul>
+        ) : emptyLabel ? (
+          <p className="journey-timeline__empty">{emptyLabel}</p>
+        ) : null}
+
+        {hasPens && (
+          <div className="journey-timeline__pens-row">
+            <span className="journey-timeline__side journey-timeline__side--left">
+              <span className="journey-timeline__pens-side journey-timeline__pens-side--us">{pensScore.a}</span>
+            </span>
+            <span className="journey-timeline__minute journey-timeline__minute--pens">PENS</span>
+            <span className="journey-timeline__side journey-timeline__side--right">
+              <span className="journey-timeline__pens-side journey-timeline__pens-side--them">{pensScore.b}</span>
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function GoalTimeline({ match }) {
   const rows = [
     ...match.goals1.map((g) => ({ ...g, side: 0 })),
     ...match.goals2.map((g) => ({ ...g, side: 1 })),
   ].sort((x, y) => goalMinuteVal(x) - goalMinuteVal(y));
 
-  if (!rows.length) return null;
+  const ft = [];
+  const aet = [];
+  for (const g of rows) {
+    (goalMatchPhase(g) === "aet" ? aet : ft).push(g);
+  }
+  const showAet = aet.length > 0 || match.phase === "aet" || match.phase === "pens";
+  const pensScore = match.pens ? { a: match.pens[0], b: match.pens[1] } : null;
+  const hasAny = ft.length > 0 || aet.length > 0 || pensScore != null;
+
+  if (!hasAny) return null;
 
   return (
-    <div className="relative px-4 py-3">
-      <div className="absolute bottom-3 left-1/2 top-3 w-px -translate-x-1/2 bg-[var(--border-strong)]" />
-      <ul className="flex flex-col gap-1.5">
-        {rows.map((g, i) => (
-          <motion.li
-            key={`${g.name}-${g.minute}-${i}`}
-            initial={{ opacity: 0, x: g.side === 0 ? -14 : 14 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.08 + i * 0.05, duration: 0.3 }}
-            className="grid grid-cols-[1fr_auto_1fr] items-center gap-2"
-          >
-            <span className={["truncate text-[12px] font-semibold text-[var(--text-secondary)]", g.side === 0 ? "text-right" : "opacity-0"].join(" ")}>
-              {g.side === 0 && (
-                <>
-                  {g.name}
-                  {g.penalty && <span className="ml-1 text-[9px] font-black text-[var(--gold-bright)]">(P)</span>}
-                  {g.owngoal && <span className="ml-1 text-[9px] font-black text-[var(--wrong)]">(OG)</span>}
-                </>
-              )}
-            </span>
-            <span className="goal-minute z-10 grid min-w-9 place-items-center rounded-full px-1.5 py-0.5 text-[10px] font-extrabold text-[var(--text-primary)]">
-              {g.minute}′
-            </span>
-            <span className={["truncate text-[12px] font-semibold text-[var(--text-secondary)]", g.side === 1 ? "text-left" : "opacity-0"].join(" ")}>
-              {g.side === 1 && (
-                <>
-                  {g.name}
-                  {g.penalty && <span className="ml-1 text-[9px] font-black text-[var(--gold-bright)]">(P)</span>}
-                  {g.owngoal && <span className="ml-1 text-[9px] font-black text-[var(--wrong)]">(OG)</span>}
-                </>
-              )}
-            </span>
-          </motion.li>
-        ))}
-      </ul>
+    <div className="journey-timeline px-1 py-1">
+      <GoalTimelineSection
+        shortLabel="FT"
+        goals={ft}
+        emptyLabel={ft.length === 0 ? "No goals in regulation" : null}
+      />
+      {showAet && (
+        <GoalTimelineSection
+          shortLabel="AET"
+          goals={aet}
+          emptyLabel={aet.length === 0 ? "No goals in extra time" : null}
+        />
+      )}
+      {pensScore && <GoalTimelineSection shortLabel="PENS" goals={[]} pensScore={pensScore} />}
     </div>
   );
 }
@@ -99,23 +159,18 @@ function ScorePointsBadge({ points }) {
   );
 }
 
-export function MatchPredictionsList({ others }) {
-  if (!others.length) return null;
+/** Renders "a–b", coloring each side green/red against the final score once graded. */
+function ScoreNumbers({ a, b, ftScore, graded }) {
+  if (a == null || b == null) return <>—</>;
+  if (!graded || !ftScore) return <>{a}–{b}</>;
+  const aOk = a === ftScore[0];
+  const bOk = b === ftScore[1];
   return (
-    <div className="match-predictions-list">
-      <p className="match-predictions-list__title">Everyone else</p>
-      <ul className="match-predictions-list__items">
-        {others.map((entry) => (
-          <li key={entry.uid} className="match-predictions-list__row">
-            <span className="match-predictions-list__name">{entry.name}</span>
-            <span className="flex items-center gap-1.5">
-              <ScorePointsBadge points={entry.points} />
-              <span className="match-predictions-list__score">{entry.display}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <>
+      <span className={aOk ? "text-[var(--pitch-glow)]" : "text-[var(--wrong)]"}>{a}</span>
+      <span>–</span>
+      <span className={bOk ? "text-[var(--pitch-glow)]" : "text-[var(--wrong)]"}>{b}</span>
+    </>
   );
 }
 
@@ -186,7 +241,7 @@ export function MatchModal({
   };
 
   const hasScorePrediction = scorePrediction != null;
-  const yourScoreDisplay = formatScorePredictionDisplay(scorePrediction, match);
+  const [yourA, yourB] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);
   const yourPoints =
     played && scorePrediction && match.ftScore
       ? gradeScorePrediction(scorePrediction, match.ftScore).scorePoints
@@ -198,7 +253,7 @@ export function MatchModal({
     match.phase === "aet" || match.phase === "pens" ? "Final score (90 min)" : "Final score";
 
   return (
-    <Modal open={!!match} onClose={onClose}>
+    <Modal open={!!match} onClose={onClose} maxW="max-w-2xl">
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/30">
@@ -224,17 +279,8 @@ export function MatchModal({
               >
                 {match.score[0]}–{match.score[1]}
               </motion.div>
-            ) : yourScoreDisplay && !played ? (
-              <motion.div
-                initial={{ scale: 0.7, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="font-display text-4xl tracking-widest text-[var(--gold-bright)]"
-              >
-                {yourScoreDisplay}
-              </motion.div>
             ) : (
-              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">vs</div>
+              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">–</div>
             )}
             {live && (
               <span className="mt-0.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--live)]">
@@ -267,104 +313,119 @@ export function MatchModal({
           <MatchTeamHeader team={match.team2} refName={match.ref2} won={played && match.winnerIdx === 1} onFlagClick={onFlagClick} />
         </div>
 
-        <GoalTimeline match={match} />
+        <div className="grid grid-cols-1 gap-3 px-4 pb-4 pt-2 md:grid-cols-2 md:items-start">
+          {/* LEFT PANEL — game info */}
+          <div className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
+            <p className="text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Match
+            </p>
+            {(played || live) && teamsConfirmed && (
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  {resultLabel}
+                </span>
+                <span className="font-display text-xl tracking-widest text-[var(--text-primary)]">
+                  {actualScoreDisplay ?? "—"}
+                </span>
+              </div>
+            )}
+            <GoalTimeline match={match} />
+            <div className="flex flex-col items-center gap-1 rounded-xl bg-[var(--bg-mid)] px-3 py-2.5 text-[11px] font-medium text-[var(--text-muted)] ring-1 ring-[var(--border)]">
+              {match.kickoff && <span>🗓 {fmtKickoff(match.kickoff)}</span>}
+              {match.ground && <span>🏟 {match.ground}</span>}
+            </div>
+          </div>
 
-        <div className="mx-4 mb-4 mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-xl bg-[var(--bg-mid)] px-3 py-2.5 text-[11px] font-medium text-[var(--text-muted)] ring-1 ring-[var(--border)]">
-          {match.kickoff && <span>🗓 {fmtKickoff(match.kickoff)}</span>}
-          {match.ground && <span>🏟 {match.ground}</span>}
+          {/* RIGHT PANEL — predictions */}
+          {teamsConfirmed && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
+              <p className="text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Predictions
+              </p>
+              <div className="match-predictions-list">
+                <ul className="match-predictions-list__items">
+                  <li className="match-predictions-list__row">
+                    <span className="match-predictions-list__name font-bold text-[var(--gold-bright)]">You</span>
+                    {canEditScore ? (
+                      <span className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max="20"
+                          value={scoreA}
+                          onChange={(e) => setScoreA(e.target.value)}
+                          className="h-7 w-9 rounded-md border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-sm text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
+                          placeholder="0"
+                          aria-label={`${match.team1?.code ?? "Team 1"} predicted score`}
+                        />
+                        <span className="text-[var(--text-muted)]">–</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="20"
+                          value={scoreB}
+                          onChange={(e) => setScoreB(e.target.value)}
+                          className="h-7 w-9 rounded-md border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-sm text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
+                          placeholder="0"
+                          aria-label={`${match.team2?.code ?? "Team 2"} predicted score`}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveScore}
+                          aria-label="Save prediction"
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--gold)]/20 text-xs font-bold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/40 transition hover:bg-[var(--gold)]/30"
+                        >
+                          ✓
+                        </button>
+                        {hasScorePrediction && (
+                          <button
+                            type="button"
+                            onClick={handleClearClick}
+                            aria-label="Clear prediction"
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--bg-elevated)] text-xs font-bold text-[var(--text-muted)] transition hover:bg-[var(--border-strong)]"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <ScorePointsBadge points={yourPoints} />
+                        <span
+                          className={[
+                            "match-predictions-list__score",
+                            yourA == null ? "text-[var(--text-muted)]" : "",
+                          ].join(" ")}
+                        >
+                          <ScoreNumbers a={yourA} b={yourB} ftScore={actualFtScore} graded={played} />
+                        </span>
+                      </span>
+                    )}
+                  </li>
+                  {otherPredictions.map((entry) => (
+                    <li key={entry.uid} className="match-predictions-list__row">
+                      <span className="match-predictions-list__name">{entry.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <ScorePointsBadge points={entry.points} />
+                        <span className="match-predictions-list__score">
+                          <ScoreNumbers a={entry.home} b={entry.away} ftScore={actualFtScore} graded={played} />
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {canEditScore && (
+                <p className="text-center text-[9px] leading-relaxed text-[var(--text-muted)]">
+                  Predict the full-time score · one side correct{" "}
+                  <span className="font-bold text-[var(--gold-bright)]">+2 pts</span>
+                  {" · "}
+                  exact score <span className="font-bold text-[var(--gold-bright)]">+5 pts</span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
-
-        {(played || live) && teamsConfirmed && (
-          <div className="mx-4 mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                {resultLabel}
-              </span>
-              <span className="font-display text-xl tracking-widest text-[var(--text-primary)]">
-                {actualScoreDisplay ?? "—"}
-              </span>
-            </div>
-            <div className="match-predictions-list mt-1">
-              <p className="match-predictions-list__title">Your prediction</p>
-              <ul className="match-predictions-list__items">
-                <li className="match-predictions-list__row">
-                  <span className="match-predictions-list__name font-bold text-[var(--text-primary)]">You</span>
-                  <span className="flex items-center gap-1.5">
-                    <ScorePointsBadge points={yourPoints} />
-                    <span
-                      className={[
-                        "match-predictions-list__score",
-                        !yourScoreDisplay ? "text-[var(--text-muted)]" : "",
-                      ].join(" ")}
-                    >
-                      {yourScoreDisplay ?? "—"}
-                    </span>
-                  </span>
-                </li>
-              </ul>
-            </div>
-            <MatchPredictionsList others={otherPredictions} />
-          </div>
-        )}
-
-        {/* Your score prediction — always editable before kickoff */}
-        {upcoming && canEditScore && teamsConfirmed && (
-          <div className="mx-4 mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
-            <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--gold-bright)]">
-              Your prediction
-            </p>
-            <div className="mb-2 flex items-center justify-center gap-2">
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[9px] text-[var(--text-muted)]">{match.team1?.code ?? "TBD"}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="20"
-                  value={scoreA}
-                  onChange={(e) => setScoreA(e.target.value)}
-                  className="h-10 w-12 rounded-lg border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-lg text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
-                  placeholder="0"
-                />
-              </div>
-              <span className="mt-3.5 text-base font-bold text-[var(--text-muted)]">–</span>
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[9px] text-[var(--text-muted)]">{match.team2?.code ?? "TBD"}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="20"
-                  value={scoreB}
-                  onChange={(e) => setScoreB(e.target.value)}
-                  className="h-10 w-12 rounded-lg border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-lg text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={handleClearClick}
-                className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] transition hover:bg-[var(--border-strong)]"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveScore}
-                className="flex-[2] rounded-lg bg-[var(--gold)]/20 px-3 py-1.5 text-xs font-bold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/40 transition hover:bg-[var(--gold)]/30"
-              >
-                Save Prediction
-              </button>
-            </div>
-            <p className="mt-1.5 text-center text-[9px] leading-relaxed text-[var(--text-muted)]">
-              Predict the full-time score for this match · one side correct{" "}
-              <span className="font-bold text-[var(--gold-bright)]">+2 pts</span>
-              {" · "}
-              exact score <span className="font-bold text-[var(--gold-bright)]">+5 pts</span>
-            </p>
-            <MatchPredictionsList others={otherPredictions} />
-          </div>
-        )}
 
         {/* Clear Confirmation Dialog */}
         {showClearConfirm && (

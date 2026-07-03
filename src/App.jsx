@@ -33,7 +33,7 @@ import { WCLogo } from "./components/common/icons";
 import { Confetti } from "./components/common/Confetti";
 import { BootLoadingOverlay } from "./components/common/BootLoadingOverlay";
 import { ScrollBracket } from "./components/bracket/ScrollBracket";
-import { PredictionsRail } from "./components/rail/PredictionsRail";
+import { PredictionsRail, RailGuideLabel } from "./components/rail/PredictionsRail";
 import { TeamModal } from "./components/team/TeamModal";
 import { MatchModal } from "./components/match/MatchModal";
 import { ViewingAsPicker, HeaderToolbar } from "./components/header/HeaderToolbar";
@@ -403,8 +403,8 @@ export default function App() {
           if (a.locked !== b.locked) return a.locked ? -1 : 1;
           if (!a.locked && !b.locked) return a.name.localeCompare(b.name);
           return (
-            b.correct - a.correct ||
             b.points - a.points ||
+            b.correct - a.correct ||
             b.total - a.total ||
             a.name.localeCompare(b.name)
           );
@@ -431,6 +431,7 @@ export default function App() {
     teamById,
     byNum,
     lockTimeMs: activeLockTimeMs,
+    railGuideLabel: isViewingSelf && locked ? <RailGuideLabel /> : null,
   };
   const showBracket = teams.length === 32;
   const docsLoading = !!uid && !profileLoaded;
@@ -624,7 +625,6 @@ export default function App() {
           isViewingOther={!!viewingFriend}
           viewerName={viewingFriend?.name}
           lockTimeMs={activeLockTimeMs}
-          showRailLabel={isViewingSelf && locked}
           showScoreGuide={showRailScoreGuide}
           scoreGuideNum={railScoreGuideMatch?.num ?? null}
           scoreGuideMatch={railScoreGuideMatch}

@@ -1,4 +1,4 @@
-/** Small circular badge for points earned — only after match is played */
+/** Small gold oval badge for points earned — only after match is played */
 export function PointsEarnedBadge({ points, isRail = false }) {
   if (!points || points <= 0) return null;
 
@@ -6,11 +6,11 @@ export function PointsEarnedBadge({ points, isRail = false }) {
     <span
       className={[
         "points-earned-badge",
+        "points-earned-badge--wide",
         isRail ? "points-earned-badge--rail" : "points-earned-badge--bracket",
-        points >= 10 ? "points-earned-badge--wide" : "",
       ].join(" ")}
     >
-      {points}
+      +{points}
     </span>
   );
 }
