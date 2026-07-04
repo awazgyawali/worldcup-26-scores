@@ -82,6 +82,16 @@ export function friendScorePredictionsForMatch(friends, scoreKey, match, exclude
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Locked, non-abandoned friends who haven't made a score prediction for this fixture (excludes self). */
+export function friendsMissingScorePredictionForMatch(friends, scoreKey, match, excludeUid) {
+  if (!scoreKey || !match?.team1 || !match?.team2) return [];
+  return friends
+    .filter((f) => f.uid !== excludeUid && f.name && f.locked && !f.abandoned)
+    .filter((f) => !getScorePrediction(f.winners, scoreKey))
+    .map((f) => ({ uid: f.uid, name: f.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function formatScorePredictionDisplay(scorePrediction, match) {
   if (!scorePrediction || !match?.team1 || !match?.team2) return null;
   const [a, b] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);

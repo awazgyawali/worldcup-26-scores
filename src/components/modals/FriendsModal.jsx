@@ -1,4 +1,5 @@
 import { Drawer } from "../common/Modal";
+import { ProviderIcon } from "../common/ProviderIcon";
 
 // ----------------------------------------------------------------------------
 // FRIENDS / LEADERBOARD DRAWER
@@ -19,6 +20,7 @@ function ViewerDrawerRankedRow({ friend, rank, isMe, isActive, onSelect }) {
         <span className={["viewer-drawer-row__rank", rankClass].filter(Boolean).join(" ")}>{rank}</span>
         <span className="viewer-drawer-row__main">
           <span className="viewer-drawer-row__name-line">
+            <ProviderIcon provider={friend.authProvider} className="viewer-drawer-row__provider-icon" />
             <span className="viewer-drawer-row__name">{friend.name}</span>
             {isMe && <span className="viewer-drawer-row__tag">you</span>}
           </span>
@@ -45,6 +47,7 @@ function ViewerDrawerOpenRow({ friend, isMe, isActive, onSelect }) {
       >
         <span className="viewer-drawer-row__main">
           <span className="viewer-drawer-row__name-line">
+            <ProviderIcon provider={friend.authProvider} className="viewer-drawer-row__provider-icon" />
             <span className="viewer-drawer-row__name">{friend.name}</span>
             {isMe && <span className="viewer-drawer-row__tag">you</span>}
           </span>

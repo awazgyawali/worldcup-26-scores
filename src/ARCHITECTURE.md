@@ -12,10 +12,13 @@ logic or reach into the wrong module.
 `App.jsx` is the composition root. It owns *all* state (`useState`/`useRef`)
 and wires two data sources:
 
-- **`hooks/usePredictions.js`** — Firebase auth (anonymous + Google linking),
+- **`hooks/usePredictions.js`** — Firebase auth (anonymous bootstrap linked to
+  Google or email/password — see the mandatory-login note further down),
   Firestore sync of the user's `winners` object, the realtime `friends` list
   (for the leaderboard/rail), and lock state. `App.jsx` never touches
-  Firestore/Auth directly — everything goes through this hook.
+  Firestore/Auth directly — everything goes through this hook. Each prediction
+  doc also carries `authProvider` ("google" | "email" | "anonymous", written by
+  `getAuthProviderTag()`), only used today to render a badge in `FriendsModal`.
 - **`hooks/useWorldCup.js`** — polls `openfootball/worldcup.json` every 60s,
   enriches raw matches (resolves `W##`/`L##` refs, computes status/live
   minute/scores), and derives the confirmed Round-of-32 team list and each
@@ -83,14 +86,29 @@ src/
     match/                  Match detail modal (score, goals, score-prediction panel)
       MatchModal.jsx          GoalTimeline + MatchTeamHeader + MatchPredictionsList +
                               MatchModal. See "Stage B" note below for the prediction panel.
+                              Also renders a "Haven't predicted yet" line (locked,
+                              non-abandoned friends missing a score prediction for this
+                              fixture) via `lib/scoring.js`'s
+                              `friendsMissingScorePredictionForMatch()`.
 
     header/
-      HeaderToolbar.jsx       ViewingAsPicker + HeaderToolbar (Google connect/Lock/Reset)
+      HeaderToolbar.jsx       ViewingAsPicker + AccountMenu (account icon → popover with
+                              signed-in email + Sign out, backed by SignOutConfirmModal)
+                              + HeaderToolbar (Lock/Reset only)
 
     modals/                 Everything else that opens as a Modal/Drawer
-      NameModal.jsx           Onboarding: sign in / play anonymously + rules screen
-      FriendsModal.jsx        Leaderboard + friend-switcher drawer
+      LoginPage.jsx           Dedicated full-screen onboarding gate (not a dismissible
+                              modal): email/password sign in + sign up, forgot password,
+                              Google, rules screen. No guest/anonymous play — every
+                              user must authenticate with Google or email+password
+                              before `needsName` clears. (Anonymous Firebase auth is
+                              still used internally as a transient bootstrap identity
+                              that gets linked to the real credential — see
+                              `usePredictions.js` — but it's never exposed as a UI choice.)
+      FriendsModal.jsx        Leaderboard + friend-switcher drawer. Each row shows a
+                              ProviderIcon (Google/email/anonymous) from `friend.authProvider`.
       LockConfirmModal.jsx    Confirm-before-locking dialog
+      SignOutConfirmModal.jsx Confirm-before-sign-out dialog, used by AccountMenu
 
   App.jsx                  Composition root only — no component definitions besides
                             `export default function App()`.
@@ -104,7 +122,9 @@ src/
 - New modal → `components/modals/`, reuse `Modal`/`Drawer` from `common/`
 - New rail card behavior (group-stage picks) → `components/rail/`
 - Anything about a single team's match history → `components/team/`
-- New Firebase field or sync behavior → `hooks/usePredictions.js` only
+- New Firebase field, sync, or auth behavior (email/password, Google, sign out) →
+  `hooks/usePredictions.js` only — `LoginPage.jsx` and `HeaderToolbar.jsx` just call
+  the callbacks it returns, they never touch `auth`/`firebase.js` directly
 - New live-data field from the JSON feed → `hooks/useWorldCup.js`'s `enrichMatch`
 
 ## CSS

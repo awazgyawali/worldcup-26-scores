@@ -171,3 +171,75 @@ body {
   border-radius: 99px;
 }
 
+/* ---------------------------------------------------------------- login page */
+.login-page {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background:
+    radial-gradient(ellipse 95% 50% at 50% -8%, color-mix(in oklch, var(--pitch) 17%, transparent), transparent 58%),
+    radial-gradient(ellipse 65% 38% at 50% 104%, color-mix(in oklch, var(--gold) 7%, transparent), transparent 55%),
+    var(--bg-deep);
+}
+
+.login-page__card {
+  display: flex;
+  max-height: min(88vh, 720px);
+  width: 100%;
+  max-width: 26rem;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6);
+}
+
+.login-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.login-input::placeholder {
+  color: var(--text-muted);
+}
+
+.login-input:focus {
+  border-color: color-mix(in oklch, var(--pitch-glow) 50%, transparent);
+}
+
+/* ---------------------------------------------------------------- provider icon (shared: friends drawer + account menu) */
+.provider-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-muted);
+}
+
+.provider-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.provider-icon--email {
+  color: var(--next);
+}
+
+.provider-icon--anon {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+

@@ -36,8 +36,8 @@ import { ScrollBracket } from "./components/bracket/ScrollBracket";
 import { PredictionsRail, RailGuideLabel } from "./components/rail/PredictionsRail";
 import { TeamModal } from "./components/team/TeamModal";
 import { MatchModal } from "./components/match/MatchModal";
-import { ViewingAsPicker, HeaderToolbar } from "./components/header/HeaderToolbar";
-import { NameModal } from "./components/modals/NameModal";
+import { ViewingAsPicker, HeaderToolbar, AccountMenu } from "./components/header/HeaderToolbar";
+import { LoginPage } from "./components/modals/LoginPage";
 import { FriendsModal } from "./components/modals/FriendsModal";
 import { LockConfirmModal } from "./components/modals/LockConfirmModal";
 
@@ -77,6 +77,8 @@ export default function App() {
   const {
     uid,
     name,
+    email,
+    authProvider,
     needsName,
     profileLoaded,
     authReady,
@@ -86,6 +88,10 @@ export default function App() {
     clearSyncError,
     submitName,
     connectGoogle,
+    signUpWithEmail,
+    signInWithEmail,
+    resetPassword,
+    signOutUser,
     isAnonymous,
     linkingGoogle,
     locked,
@@ -437,6 +443,10 @@ export default function App() {
     railGuideLabel: isViewingSelf && locked ? <RailGuideLabel /> : null,
   };
   const showBracket = teams.length === 32;
+  // Google/email sign-in is mandatory — anonymous sessions (including pre-existing
+  // ones from before this requirement) are routed back through LoginPage. Linking
+  // preserves their uid/picks, it doesn't create a new account.
+  const requiresLogin = needsName || isAnonymous;
   const docsLoading = !!uid && !profileLoaded;
   const appLoading = !authReady || !friendsReady || docsLoading || loading;
   const bootLabel = !authReady
@@ -467,8 +477,15 @@ export default function App() {
           </button>
         </div>
       )}
-      {!appLoading && authReady && profileLoaded && needsName && (
-        <NameModal onSubmit={submitName} onConnectGoogle={connectGoogle} linkingGoogle={linkingGoogle} />
+      {!appLoading && authReady && profileLoaded && requiresLogin && (
+        <LoginPage
+          onSubmit={submitName}
+          onConnectGoogle={connectGoogle}
+          onSignInEmail={signInWithEmail}
+          onSignUpEmail={signUpWithEmail}
+          onResetPassword={resetPassword}
+          linkingGoogle={linkingGoogle}
+        />
       )}
       <FriendsModal
         open={showFriends}
@@ -555,7 +572,7 @@ export default function App() {
                 <ViewingAsPicker
                   name={activeViewerName}
                   onClick={() => setShowFriends(true)}
-                  disabled={!profileLoaded || needsName || !authReady}
+                  disabled={!profileLoaded || requiresLogin || !authReady}
                 />
               </div>
             </div>
@@ -568,10 +585,10 @@ export default function App() {
                 lockTooltip={lockTooltip}
                 onOpenLock={() => setShowLockConfirm(true)}
                 onReset={resetBracket}
-                isAnonymous={isAnonymous}
-                linkingGoogle={linkingGoogle}
-                onConnectGoogle={() => connectGoogle()}
               />
+              {isViewingSelf && (
+                <AccountMenu email={email} authProvider={authProvider} onSignOut={signOutUser} />
+              )}
             </div>
           </div>
         </div>

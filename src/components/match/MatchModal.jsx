@@ -5,6 +5,7 @@ import { Countdown } from "../common/Countdown";
 import { isRef } from "../../lib/teams";
 import {
   friendScorePredictionsForMatch,
+  friendsMissingScorePredictionForMatch,
   getScorePrediction,
   gradeScorePrediction,
   mapPredictedScores,
@@ -262,6 +263,10 @@ export function MatchModal({
     () => (match ? friendScorePredictionsForMatch(friends, slotKey, match, selfUid) : []),
     [friends, slotKey, match, selfUid]
   );
+  const missingPredictions = useMemo(
+    () => (match ? friendsMissingScorePredictionForMatch(friends, slotKey, match, selfUid) : []),
+    [friends, slotKey, match, selfUid]
+  );
 
   const [scoreA, setScoreA] = useState(scorePrediction?.[0] ?? "");
   const [scoreB, setScoreB] = useState(scorePrediction?.[1] ?? "");
@@ -517,6 +522,16 @@ export function MatchModal({
                   ))}
                 </ul>
               </div>
+              {missingPredictions.length > 0 && (
+                <div className="match-predictions-missing">
+                  <p className="match-predictions-missing__label">
+                    Haven&apos;t predicted yet ({missingPredictions.length})
+                  </p>
+                  <p className="match-predictions-missing__names">
+                    {missingPredictions.map((f) => f.name).join(", ")}
+                  </p>
+                </div>
+              )}
               {canEditScore && (
                 <p className="text-center text-[9px] leading-relaxed text-[var(--text-muted)]">
                   Predict the full-time score · one side correct{" "}

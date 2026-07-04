@@ -434,6 +434,29 @@
   white-space: nowrap;
 }
 
+.match-predictions-missing {
+  margin-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+}
+
+.match-predictions-missing__label {
+  margin: 0 0 0.2rem;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wrong);
+}
+
+.match-predictions-missing__names {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 
 /* ---------------------------------------------------------------- points earned badge - small gold pill top-right indicator */
 .points-earned-badge {
