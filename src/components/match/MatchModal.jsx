@@ -221,9 +221,10 @@ function initials(name) {
 // the modal (other tabs) and inline in the Matchday master-detail pane.
 // onSaveScorePrediction(slotKey, score|null, match) → boolean.
 // ----------------------------------------------------------------------------
-export function MatchDetailBody({ match, winners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction }) {
+export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction }) {
   const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
-  const scorePrediction = slotKey ? getScorePrediction(winners, slotKey) : null;
+  const scoreSource = scoreWinners ?? winners;
+  const scorePrediction = slotKey ? getScorePrediction(scoreSource, slotKey) : null;
 
   const otherPredictions = useMemo(
     () => (match ? friendScorePredictionsForMatch(friends, slotKey, match, selfUid) : []),
@@ -547,6 +548,7 @@ export function MatchModal({
   matches = [],
   onSelectMatch,
   winners,
+  scoreWinners,
   numToSlot,
   onClose,
   onFlagClick,
@@ -606,6 +608,7 @@ export function MatchModal({
         <MatchDetailBody
           match={match}
           winners={winners}
+          scoreWinners={scoreWinners}
           numToSlot={numToSlot}
           friends={friends}
           selfUid={selfUid}

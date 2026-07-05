@@ -188,7 +188,7 @@ export function MatchdayDetail({
                 <div className="md-panel__pick-line">
                   Your bracket pick:{" "}
                   <span>
-                    <img src={flagSrc(bracketPickTeam.iso2, 32)} alt="" />
+                    <img src={flagSrc(bracketPickTeam.iso2, 40)} alt="" />
                     {bracketPickTeam.code}
                   </span>
                 </div>
@@ -203,7 +203,7 @@ export function MatchdayDetail({
                 <div className="md-panel__pick-line">
                   Your bracket pick:{" "}
                   <span>
-                    <img src={flagSrc(bracketPickTeam.iso2, 32)} alt="" />
+                    <img src={flagSrc(bracketPickTeam.iso2, 40)} alt="" />
                     {bracketPickTeam.code}
                   </span>
                 </div>

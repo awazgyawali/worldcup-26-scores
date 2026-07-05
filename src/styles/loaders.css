@@ -1,14 +1,25 @@
-/* ---------------------------------------------------------------- ball loader */
-@keyframes ballBounce {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-22px) rotate(180deg); }
+/* ---------------------------------------------------------------- boot loader */
+.boot-loading__animation {
+  width: min(22rem, 70vw);
+  aspect-ratio: 1;
 }
-@keyframes ballShadow {
-  0%, 100% { transform: scaleX(1); opacity: 0.35; }
-  50% { transform: scaleX(0.55); opacity: 0.15; }
+
+.boot-loading__animation svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-.ball-bounce { animation: ballBounce 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
-.ball-shadow { animation: ballShadow 0.9s cubic-bezier(0.35, 0, 0.65, 1) infinite; }
+
+.boot-loading__dots span {
+  display: inline-block;
+  animation: blDot 1.2s ease-in-out infinite;
+}
+.boot-loading__dots span:nth-child(2) { animation-delay: 0.15s; }
+.boot-loading__dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes blDot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30% { opacity: 1; }
+}
 
 .boot-loading {
   position: fixed;
@@ -26,21 +37,6 @@
   flex-direction: column;
   align-items: center;
   gap: 1.25rem;
-}
-
-.boot-loading__ball {
-  font-size: 4.5rem;
-  line-height: 1;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
-}
-
-.boot-loading__shadow {
-  margin-top: 0.35rem;
-  width: 2.75rem;
-  height: 0.45rem;
-  border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.55);
-  filter: blur(2px);
 }
 
 .boot-loading__label {

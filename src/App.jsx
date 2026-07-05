@@ -28,7 +28,7 @@ import {
 import { fmtCountdown, fmtTimeOnly } from "./lib/format";
 
 import { BrandBadge } from "./components/common/icons";
-import { BootLoadingOverlay } from "./components/common/BootLoadingOverlay";
+import { BootLoadingOverlay, useBootCycleHold } from "./components/common/BootLoadingOverlay";
 import { ScrollBracket } from "./components/bracket/ScrollBracket";
 import { TeamModal } from "./components/team/TeamModal";
 import { MatchModal } from "./components/match/MatchModal";
@@ -209,10 +209,21 @@ export default function App() {
   const activeViewerLocked = viewingFriend ? viewingFriend.locked : locked;
   const activeUid = viewingFriend?.uid ?? uid;
 
-  // Default to Bracket while editing; jump to Matchday once the active viewer locks.
+  // Default to Bracket while editing; jump to Matchday once you lock your own bracket.
   useEffect(() => {
-    if (activeViewerLocked) setTab("matchday");
-  }, [activeViewerLocked]);
+    if (isViewingSelf && locked) setTab("matchday");
+  }, [isViewingSelf, locked]);
+
+  const handleTabChange = useCallback(
+    (next) => {
+      if (next !== "bracket") {
+        exitFriendView();
+        setShowFriends(false);
+      }
+      setTab(next);
+    },
+    [exitFriendView]
+  );
 
   const showBracketGuide = isViewingSelf && !locked && bracketGuideCount < GUIDE_MAX_INTERACTIONS;
 
@@ -274,9 +285,10 @@ export default function App() {
   );
 
   const openViewerPicker = useCallback(() => {
+    if (tab !== "bracket") return;
     setFriendsPickerMode("view");
     setShowFriends(true);
-  }, []);
+  }, [tab]);
 
   const openComparePicker = useCallback(() => {
     setFriendsPickerMode("compare");
@@ -489,6 +501,9 @@ export default function App() {
   const requiresLogin = needsName || isAnonymous;
   const docsLoading = !!uid && !profileLoaded;
   const appLoading = !authReady || !friendsReady || docsLoading || loading;
+  // Hold the overlay until the kick animation completes its current loop,
+  // even when the app is ready sooner
+  const showBoot = useBootCycleHold(appLoading);
   const bootLabel = !authReady
     ? "Signing in"
     : !friendsReady || docsLoading
@@ -501,7 +516,7 @@ export default function App() {
   return (
     <div className="app-shell text-[var(--text-primary)]">
       <AnimatePresence>
-        {appLoading && <BootLoadingOverlay key="boot" label={bootLabel} />}
+        {showBoot && <BootLoadingOverlay key="boot" label={bootLabel} />}
       </AnimatePresence>
       {syncing && !authError && !syncError && (
         <div className="sync-tooltip sync-tooltip--saving" role="status" aria-live="polite">
@@ -555,6 +570,7 @@ export default function App() {
         matches={railMatches}
         onSelectMatch={setMatchModal}
         winners={displayWinners}
+        scoreWinners={winners}
         numToSlot={numToSlot}
         onClose={() => setMatchModal(null)}
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
@@ -578,15 +594,17 @@ export default function App() {
             </h1>
           </div>
 
-          <TabNav active={tab} onChange={setTab} className="broadcast-bar__desktop-only" />
+          <TabNav active={tab} onChange={handleTabChange} className="broadcast-bar__desktop-only" />
 
           <div className="flex flex-1 items-center justify-end gap-2">
-            <ViewingAsPicker
-              name={activeViewerName}
-              isSelf={isViewingSelf}
-              onClick={openViewerPicker}
-              disabled={!profileLoaded || requiresLogin || !authReady}
-            />
+            {tab === "bracket" && (
+              <ViewingAsPicker
+                name={activeViewerName}
+                isSelf={isViewingSelf}
+                onClick={openViewerPicker}
+                disabled={!profileLoaded || requiresLogin || !authReady}
+              />
+            )}
             <div className="broadcast-bar__desktop-only flex items-center gap-2">
               {isViewingSelf && locked && (
                 <div className="header-points-chip" title="Your points and rank">
@@ -634,6 +652,7 @@ export default function App() {
         <MatchdayPage
           railMatches={railMatches}
           winners={displayWinners}
+          scoreWinners={winners}
           numToSlot={numToSlot}
           rankedFriends={rankedFriends}
           uid={uid}
@@ -684,7 +703,7 @@ export default function App() {
       )}
 
       {/* MOBILE BOTTOM NAVIGATION */}
-      <TabNav variant="bottom" active={tab} onChange={setTab} />
+      <TabNav variant="bottom" active={tab} onChange={handleTabChange} />
         </>
       )}
     </div>

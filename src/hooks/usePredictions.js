@@ -453,8 +453,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         }
       }
 
-      setIsAnonymous(user.isAnonymous);
-      setUserEmail(user.email ?? null);
+      // user.isAnonymous is stale right after linkWithPopup (stays true until
+      // reload/refresh) — a linked user has providerData, an anonymous one doesn't
+      setIsAnonymous(user.isAnonymous && user.providerData.length === 0);
+      setUserEmail(user.email ?? user.providerData[0]?.email ?? null);
       setAuthProvider(getAuthProviderTag(user));
 
       if (submitNameAfter) {

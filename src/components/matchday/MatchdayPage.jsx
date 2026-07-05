@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getScorePrediction, gradeScorePrediction } from "../../lib/scoring";
+import { getScorePrediction, gradeScorePrediction, SCORE_SUFFIX } from "../../lib/scoring";
 import { flagSrc, fmtTimeOnly, fmtCountdown, liveMinute } from "../../lib/format";
 import { MatchDetailBody, MatchTabs } from "../match/MatchModal";
 
@@ -53,6 +53,7 @@ function navLabel(m) {
 function MatchdayDesktopDetail({
   match,
   winners,
+  scoreWinners,
   numToSlot,
   friends,
   selfUid,
@@ -70,6 +71,7 @@ function MatchdayDesktopDetail({
       <MatchDetailBody
         match={match}
         winners={winners}
+        scoreWinners={scoreWinners}
         numToSlot={numToSlot}
         friends={friends}
         selfUid={selfUid}
@@ -84,6 +86,7 @@ function MatchdayMobileView({
   match,
   matches,
   winners,
+  scoreWinners,
   numToSlot,
   friends,
   selfUid,
@@ -116,6 +119,7 @@ function MatchdayMobileView({
         <MatchDetailBody
           match={match}
           winners={winners}
+          scoreWinners={scoreWinners}
           numToSlot={numToSlot}
           friends={friends}
           selfUid={selfUid}
@@ -311,6 +315,7 @@ function MatchSchedule({
 export function MatchdayPage({
   railMatches,
   winners,
+  scoreWinners = winners,
   numToSlot,
   rankedFriends,
   uid,
@@ -323,6 +328,12 @@ export function MatchdayPage({
   onOpenLock,
 }) {
   const onboardStep = !isViewingSelf ? 3 : !pickProgress.complete ? 1 : !locked ? 2 : 3;
+
+  const hasScorePredictions = useMemo(
+    () => Object.keys(winners).some((k) => k.endsWith(SCORE_SUFFIX) && getScorePrediction(winners, k.slice(0, -SCORE_SUFFIX.length))),
+    [winners]
+  );
+  const showStepper = isViewingSelf && !(locked && hasScorePredictions);
 
   const nextMatchNum = useMemo(() => findNextMatchNum(railMatches), [railMatches]);
   const [selectedNum, setSelectedNum] = useState(null);
@@ -370,7 +381,7 @@ export function MatchdayPage({
 
   return (
     <main className="app-main matchday-page">
-      {isViewingSelf && (
+      {showStepper && (
         <div className="matchday-stepper-wrap matchday-stepper-wrap--desktop">
           <MatchdayStepper step={onboardStep} />
         </div>
@@ -432,6 +443,7 @@ export function MatchdayPage({
                 <MatchdayDesktopDetail
                   match={selectedMatch}
                   winners={winners}
+                  scoreWinners={scoreWinners}
                   numToSlot={numToSlot}
                   friends={rankedFriends}
                   selfUid={uid}
@@ -444,6 +456,7 @@ export function MatchdayPage({
                   match={selectedMatch}
                   matches={railMatches}
                   winners={winners}
+                  scoreWinners={scoreWinners}
                   numToSlot={numToSlot}
                   friends={rankedFriends}
                   selfUid={uid}

@@ -257,8 +257,8 @@ export function StandingsPage({
             <div className="standings-table standings-table--open">
               <div className="standings-columns" aria-hidden="true">
                 <span>Player</span>
-                <span>Progress</span>
-                <span>Picks left</span>
+                <span className="standings-columns__right">Progress</span>
+                <span className="standings-columns__right">Picks left</span>
                 <span className="standings-columns__chevron" />
               </div>
               {open.map((friend) => {

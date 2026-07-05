@@ -3,6 +3,10 @@ import { IconGoogle, IconMail, BrandBadge } from "../common/icons";
 import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
 import { SCORE_ONE_SIDE_POINTS, SCORE_EXACT_POINTS } from "../../lib/scoring";
 
+function fmtPts(n) {
+  return n === 1 ? "1 pt" : `${n} pts`;
+}
+
 function BrandPanel({ onShowRules, scoringRows }) {
 
   return (
@@ -174,9 +178,8 @@ export function LoginPage({
   if (mode === "rules") {
     return (
       <div className="login-page">
-        <div className="login-page__card">
-          {/* Header */}
-          <div className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-4">
+        <div className="login-page__card login-page__card--rules">
+          <div className="login-page__card-header border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-4">
             <div className="flex items-center gap-3">
               <BrandBadge className="h-9 w-9 text-sm" />
               <div>
@@ -185,7 +188,7 @@ export function LoginPage({
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="login-page__card-body nice-scroll">
             <RulesPanel onBack={() => setMode("signin")} />
           </div>
         </div>
@@ -211,7 +214,7 @@ export function LoginPage({
             </div>
 
             <>
-              <div className="mb-5">
+              <div className="login-auth__intro">
                 <h2 className="text-[1.625rem] font-extrabold tracking-tight text-[var(--text-primary)]">Get in the game</h2>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
                   Real account required — anonymous brackets don&apos;t make the leaderboard.
@@ -404,6 +407,15 @@ export function LoginPage({
 }
 
 function RulesPanel({ onBack }) {
+  const bracketRows = [
+    ...ROUNDS.filter((r) => r.key !== "final").map((r) => ({
+      label: `${r.short} correct`,
+      points: r.points,
+    })),
+    { label: "3rd place", points: THIRD_PLACE.points },
+    { label: "Final", points: ROUNDS.find((r) => r.key === "final").points },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <button
@@ -443,38 +455,20 @@ function RulesPanel({ onBack }) {
         <h3 className="font-display text-lg text-[var(--gold-bright)]">Point System</h3>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">R32 correct</span>
-            <span className="float-right font-bold">1 pt</span>
-          </div>
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">R16 correct</span>
-            <span className="float-right font-bold">2 pts</span>
-          </div>
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">QF correct</span>
-            <span className="float-right font-bold">4 pts</span>
-          </div>
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">SF correct</span>
-            <span className="float-right font-bold">7 pts</span>
-          </div>
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">3rd place</span>
-            <span className="float-right font-bold">3 pts</span>
-          </div>
-          <div className="rounded bg-[var(--bg-elevated)] p-2">
-            <span className="text-[var(--pitch-glow)]">Final</span>
-            <span className="float-right font-bold">12 pts</span>
-          </div>
+          {bracketRows.map((row) => (
+            <div key={row.label} className="rounded bg-[var(--bg-elevated)] p-2">
+              <span className="text-[var(--pitch-glow)]">{row.label}</span>
+              <span className="float-right font-bold">{fmtPts(row.points)}</span>
+            </div>
+          ))}
         </div>
 
         <div className="rounded-lg border border-[var(--gold)]/30 bg-[var(--gold)]/10 p-3">
           <p className="text-xs font-bold text-[var(--gold-bright)]">SCORE PREDICTIONS (real matches)</p>
           <p className="mt-1 text-xs text-[var(--text-secondary)]">
             On actual fixtures in the bottom bar — separate from bracket picks:<br />
-            One side correct = <span className="font-bold text-[var(--gold-bright)]">2 pts</span><br />
-            Exact score (both sides) = <span className="font-bold text-[var(--gold-bright)]">5 pts</span>
+            One side correct = <span className="font-bold text-[var(--gold-bright)]">{fmtPts(SCORE_ONE_SIDE_POINTS)}</span><br />
+            Exact score (both sides) = <span className="font-bold text-[var(--gold-bright)]">{fmtPts(SCORE_EXACT_POINTS)}</span>
           </p>
         </div>
 

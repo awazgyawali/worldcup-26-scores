@@ -307,6 +307,38 @@
   grid-template-columns: repeat(5, 1fr);
 }
 
+/* two-column expand: score summary (left) + last-5 / upcoming-5 predictions (right) */
+.standings-detail__cols {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.9fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.standings-detail__col {
+  min-width: 0;
+}
+
+.standings-detail__cols .standings-detail__col--summary .standings-detail__summary {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 0;
+}
+
+.standings-detail__cols .standings-detail__section-head {
+  margin-bottom: 0.625rem;
+}
+
+@media (max-width: 960px) {
+  .standings-detail__cols {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .standings-detail__cols .standings-detail__col--summary .standings-detail__summary {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
 .standings-detail--inline .standings-detail__view-btn {
   width: auto;
   align-self: flex-start;
@@ -437,6 +469,22 @@
   border-color: color-mix(in srgb, var(--predict) 28%, var(--border));
 }
 
+.standings-event--future {
+  opacity: 1;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--predict) 22%, var(--border));
+}
+
+/* pick indicator dot — used on desktop expand rows for upcoming games */
+.standings-m-pred__pick-dot {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--predict-bright);
+  flex-shrink: 0;
+}
+
 .standings-event__head {
   display: flex;
   align-items: center;
@@ -476,6 +524,18 @@
   font-size: 0.8125rem;
   font-weight: 800;
   color: var(--agree);
+}
+
+.standings-event__upcoming {
+  margin-left: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.35rem;
+  background: var(--predict-dim);
+  color: var(--predict-bright);
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .standings-event__lines {
@@ -609,6 +669,19 @@
 
 .standings-events-table__row--earned {
   background: color-mix(in srgb, var(--predict) 5%, transparent);
+}
+
+.standings-events-table__row--future {
+  background: color-mix(in srgb, var(--predict) 4%, transparent);
+}
+
+.standings-events-table__row--future .standings-events-table__ft,
+.standings-events-table__row--future .standings-events-table__pts {
+  color: var(--predict-bright);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
 }
 
 .standings-events-table__round {
