@@ -49,6 +49,41 @@
 }
 
 
+.app-toast {
+  position: fixed;
+  bottom: 5.5rem;
+  left: 50%;
+  z-index: 95;
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: appToastIn 0.25s ease-out;
+}
+
+.app-toast--warn {
+  background: color-mix(in oklch, var(--wrong) 92%, var(--bg-elevated));
+  border: 1px solid color-mix(in oklch, var(--wrong) 55%, transparent);
+  color: #fff;
+}
+
+@keyframes appToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* ---------------------------------------------------------------- sync status tooltip (fixed — no layout shift) */
 .sync-tooltip {
   position: fixed;

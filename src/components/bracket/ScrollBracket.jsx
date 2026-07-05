@@ -55,7 +55,7 @@ function useCompactBracket() {
   return compact;
 }
 
-function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, compareFriend = null, compareMap = null, compact = false }) {
+function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, focusPickKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, compareFriend = null, compareMap = null, compact = false }) {
   const round = ROUNDS[roundIdx];
   const rowsPerMatch = BRACKET_ROWS / indices.length;
   return (
@@ -98,7 +98,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 actualId={actual[rk]}
                 match={match}
                 align={align}
-                highlight={bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey })}
+                highlight={bracketHighlightFor(rk, { guidanceKey, focusPickKey, liveKey, nextKey })}
                 onFlagClick={onFlagClick}
                 onOpenMatch={onOpenMatch}
                 readOnly={readOnly}
@@ -172,21 +172,22 @@ function BracketSummaryBar({ winners, actual, compareFriend, compareMap }) {
   );
 }
 
-export function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, showPoints = true, showGuideBanner = false, pickProgress, railGuideLabel = null, compareFriend = null, compareMap = null }) {
+export function ScrollBracket({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, focusPickKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs = null, showPoints = true, showGuideBanner = false, pickProgress, railGuideLabel = null, compareFriend = null, compareMap = null }) {
   const compact = useCompactBracket();
-  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs, showPoints, compareFriend, compareMap, compact };
+  const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, focusPickKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs, showPoints, compareFriend, compareMap, compact };
 
+  const scrollKey = focusPickKey ?? guidanceKey;
   useEffect(() => {
-    if (!guidanceKey) return;
+    if (!scrollKey) return;
     const timer = window.setTimeout(() => {
-      document.querySelector(`[data-bracket-slot="${guidanceKey}"]`)?.scrollIntoView({
+      document.querySelector(`[data-bracket-slot="${scrollKey}"]`)?.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
         inline: "center",
       });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [guidanceKey]);
+  }, [scrollKey]);
 
   const verdictsFor = (roundIdx, side) => {
     const half = ROUNDS[roundIdx].matches / 2;

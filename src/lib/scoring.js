@@ -140,11 +140,11 @@ export function normalizeScores(winners, teams) {
 }
 
 /** Score prediction points:
- *  - One side correct: 2 points
- *  - Both sides correct (exact score): 5 points
+ *  - One side correct: 5 points
+ *  - Both sides correct (exact score): 20 points
  */
-export const SCORE_ONE_SIDE_POINTS = 2;
-export const SCORE_EXACT_POINTS = 5;
+export const SCORE_ONE_SIDE_POINTS = 5;
+export const SCORE_EXACT_POINTS = 20;
 
 export function gradeScorePrediction(predictedScore, ftScore) {
   if (!predictedScore || !ftScore) return { scoreResult: null, scorePoints: 0 };
@@ -159,7 +159,7 @@ export function gradeScorePrediction(predictedScore, ftScore) {
 
 
 /** Grade picks — points only for finished matches where the user made a pick.
- *  Score predictions on real fixtures are graded separately (2 / 5 pts).
+ *  Score predictions on real fixtures are graded separately (5 / 20 pts).
  */
 export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
   const byRound = {};

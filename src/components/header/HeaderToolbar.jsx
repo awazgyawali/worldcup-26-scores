@@ -174,8 +174,10 @@ export function HeaderToolbar({ isViewingSelf, locked, canLock, lockTooltip, onO
         <button
           type="button"
           onClick={onOpenLock}
-          disabled={!canLock}
-          className="header-action header-action--lock w-8 px-0 sm:w-auto sm:px-3 disabled:cursor-not-allowed disabled:opacity-45"
+          className={[
+            "header-action header-action--lock w-8 px-0 sm:w-auto sm:px-3",
+            !canLock && "header-action--lock-incomplete",
+          ].filter(Boolean).join(" ")}
           title={lockTooltip}
         >
           <IconLock />

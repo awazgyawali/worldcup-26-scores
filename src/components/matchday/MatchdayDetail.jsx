@@ -217,7 +217,7 @@ export function MatchdayDetail({
             <div className="md-panel__calls-head">
               <span className="md-panel__label">Score calls</span>
               <span className="md-panel__hint">
-                {mobile ? "side +2 · exact +5" : `one side +${SCORE_ONE_SIDE_POINTS} · exact +${SCORE_EXACT_POINTS}`}
+                {`one side +${SCORE_ONE_SIDE_POINTS} · exact +${SCORE_EXACT_POINTS}`}
               </span>
             </div>
 

@@ -10,6 +10,8 @@ import {
   hasBracketPicks,
   buildStarterWinners,
   findGuidancePickKey,
+  findEarliestMissingPickKey,
+  describeMissingPick,
   isMatchScorable,
   buildScorableActual,
   normalize,
@@ -60,6 +62,8 @@ export default function App() {
   const [friendsPickerMode, setFriendsPickerMode] = useState("view");
   const [compareUid, setCompareUid] = useState(null);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
+  const [focusPickKey, setFocusPickKey] = useState(null);
+  const [lockToast, setLockToast] = useState(null);
   const [teamModal, setTeamModal] = useState(null);
   const [matchModal, setMatchModal] = useState(null);
   const [bracketGuideCount, setBracketGuideCount] = useState(0);
@@ -233,7 +237,13 @@ export default function App() {
   }, [showBracketGuide, teams.length, displayWinners, actual, slotMatches, nextMatch, numToSlot]);
   const lockTooltip = pickProgress.complete
     ? "Lock your picks permanently"
-    : `Complete all ${pickProgress.total} matchups before locking (${pickProgress.filled}/${pickProgress.total} picked)`;
+    : `Complete all ${pickProgress.total} matchups before locking (${pickProgress.filled}/${pickProgress.total} picked) — tap to see what's missing`;
+
+  useEffect(() => {
+    if (!lockToast) return;
+    const timer = window.setTimeout(() => setLockToast(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [lockToast]);
 
   const champion = teams.find((t) => t.id === displayWinners[key("final", 0)]) || null;
   const actualChampion = slotMatches[key("final", 0)]?.winner || null;
@@ -246,6 +256,7 @@ export default function App() {
       const match = slotMatches[rk];
       if (match?.kickoff && Date.now() >= match.kickoff.getTime()) return;
       let isNewPick = false;
+      let pickedSlot = null;
       setWinners((prev) => {
         isNewPick = !prev[rk];
         const next = { ...prev };
@@ -255,12 +266,16 @@ export default function App() {
           isNewPick = false;
         } else {
           next[rk] = team.id;
+          pickedSlot = rk;
         }
         const normalized = normalize(next, teams);
         return normalizeScores(normalized, teams);
       });
       if (isNewPick) {
         setBracketGuideCount((c) => Math.min(c + 1, GUIDE_MAX_INTERACTIONS));
+      }
+      if (pickedSlot) {
+        setFocusPickKey((prev) => (prev === pickedSlot ? null : prev));
       }
     },
     [teams, canEdit, locked, slotMatches]
@@ -301,6 +316,28 @@ export default function App() {
     setWinners({});
     // Predictions are saved to Firebase only - no localStorage to clear
   }, [locked]);
+
+  const handleOpenLock = useCallback(() => {
+    if (locked) return;
+    if (!pickProgress.complete) {
+      const slotKey = findEarliestMissingPickKey(winners, teams, actual, slotMatches);
+      if (slotKey) {
+        const info = describeMissingPick(slotKey, winners, teams, slotMatches);
+        const remaining = pickProgress.total - pickProgress.filled;
+        setFocusPickKey(slotKey);
+        setTab("bracket");
+        setLockToast({
+          message: `Pick ${info.teamsLabel} (${info.roundLabel}${info.timeLabel ? ` · ${info.timeLabel}` : ""}) — ${remaining} left`,
+        });
+      } else {
+        setLockToast({
+          message: `Complete all ${pickProgress.total} matchups before locking (${pickProgress.filled}/${pickProgress.total} picked)`,
+        });
+      }
+      return;
+    }
+    setShowLockConfirm(true);
+  }, [locked, pickProgress, winners, teams, actual, slotMatches]);
 
   const handleLock = useCallback(async () => {
     return lockPredictions();
@@ -528,6 +565,11 @@ export default function App() {
           </button>
         </div>
       )}
+      {lockToast && (
+        <div className="app-toast app-toast--warn" role="alert" aria-live="assertive">
+          {lockToast.message}
+        </div>
+      )}
       {showLogin && (
         <LoginPage
           onSubmit={submitName}
@@ -629,7 +671,7 @@ export default function App() {
               locked={activeViewerLocked}
               canLock={pickProgress.complete}
               lockTooltip={lockTooltip}
-              onOpenLock={() => setShowLockConfirm(true)}
+              onOpenLock={handleOpenLock}
               onReset={resetBracket}
             />
             {isViewingSelf && (
@@ -660,7 +702,7 @@ export default function App() {
           pickProgress={pickProgress}
           isViewingSelf={isViewingSelf}
           onGoToBracket={() => setTab("bracket")}
-          onOpenLock={() => setShowLockConfirm(true)}
+          onOpenLock={handleOpenLock}
         />
       )}
 
@@ -692,6 +734,7 @@ export default function App() {
               stats={displayStats}
               showPoints={activeViewerLocked}
               guidanceKey={guidanceKey}
+              focusPickKey={focusPickKey}
               showGuideBanner={showBracketGuide}
               pickProgress={pickProgress}
             />

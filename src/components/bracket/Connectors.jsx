@@ -56,7 +56,8 @@ export function SFPodiumConnector({ side = "left", finalVerdict, readOnly = fals
   );
 }
 
-export function bracketHighlightFor(rk, { guidanceKey, liveKey, nextKey }) {
+export function bracketHighlightFor(rk, { guidanceKey, focusPickKey, liveKey, nextKey }) {
+  if (focusPickKey && rk === focusPickKey) return "guide";
   if (guidanceKey && rk === guidanceKey) return "guide";
   if (liveKey && rk === liveKey) return "live";
   if (nextKey && rk === nextKey) return "next";

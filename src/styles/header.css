@@ -173,6 +173,10 @@
   border-color: color-mix(in oklch, var(--gold) 38%, transparent);
 }
 
+.header-action--lock-incomplete {
+  opacity: 0.72;
+}
+
 .header-action--lock:disabled {
   opacity: 0.42;
   cursor: not-allowed;

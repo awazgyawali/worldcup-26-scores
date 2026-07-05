@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MatchCard } from "./MatchCard";
-import { TrophyMark, ThirdPlaceCard } from "./PodiumColumn";
+import { TrophyMark, ThirdPlaceCard, ChampionBanner } from "./PodiumColumn";
 import { bracketHighlightFor } from "./Connectors";
 import { getMatchTeams } from "../../lib/bracket";
 import { getScorePrediction, getMatchPredictionInfo } from "../../lib/scoring";
@@ -184,13 +184,14 @@ export function MobileBracketList({
       <div className="mobile-bracket__body nice-scroll">
         {isFinalTab && (
           <div className="mobile-bracket__podium">
+            <ChampionBanner champion={actualChampion || champion} isActual={!!actualChampion} />
             {showPoints && stats && (
               <div className="mobile-bracket__points">
                 Points: <span>{stats.totalPoints ?? stats.points ?? "—"}</span>
               </div>
             )}
             <div className="mobile-bracket__champion-card">
-              <TrophyMark champion={actualChampion || champion} isActual={!!actualChampion} />
+              <TrophyMark champion={actualChampion || champion} />
             </div>
           </div>
         )}

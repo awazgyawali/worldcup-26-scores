@@ -1,5 +1,6 @@
 import { ROUNDS, THIRD_PLACE, REQUIRED_PICK_KEYS, TOTAL_REQUIRED_PICKS, key } from "./rounds";
 import { getScorePrediction } from "./scoring";
+import { fmtKickoff } from "./format";
 
 function getPickProgress(winners) {
   const filled = REQUIRED_PICK_KEYS.filter((k) => winners[k]).length;
@@ -92,6 +93,44 @@ function findGuidancePickKey(winners, teams, actual, slotMatches, nextMatch, num
   return null;
 }
 
+function getSlotRoundShort(slotKey) {
+  if (slotKey === "third-0") return THIRD_PLACE.short;
+  const parsed = parseBracketSlotKey(slotKey);
+  if (!parsed || parsed.roundIdx === "third") return THIRD_PLACE.short;
+  return ROUNDS[parsed.roundIdx].short;
+}
+
+/** Earliest unpicked slot by kickoff — prefers matchups the user can fill right now. */
+function findEarliestMissingPickKey(winners, teams, actual, slotMatches) {
+  const missing = REQUIRED_PICK_KEYS.filter((k) => !winners[k] && !actual[k]);
+  const pickable = missing.filter((k) => slotNeedsPick(k, winners, teams, actual));
+
+  const byKickoff = (keys) =>
+    [...keys].sort((a, b) => {
+      const ta = slotMatches[a]?.kickoff?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const tb = slotMatches[b]?.kickoff?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (ta !== tb) return ta - tb;
+      return REQUIRED_PICK_KEYS.indexOf(a) - REQUIRED_PICK_KEYS.indexOf(b);
+    });
+
+  if (pickable.length) return byKickoff(pickable)[0];
+  if (missing.length) return byKickoff(missing)[0];
+  return null;
+}
+
+function describeMissingPick(slotKey, winners, teams, slotMatches) {
+  const [a, b] = getTeamsForBracketSlot(slotKey, winners, teams);
+  const match = slotMatches[slotKey];
+  const teamsLabel = a && b ? `${a.name} vs ${b.name}` : match ? `Match ${match.num}` : "This matchup";
+  const timeLabel = match?.kickoff ? fmtKickoff(match.kickoff) : null;
+  return {
+    slotKey,
+    roundLabel: getSlotRoundShort(slotKey),
+    teamsLabel,
+    timeLabel,
+  };
+}
+
 function isMatchScorable(match, lockTimeMs) {
   // No lock date means the bracket isn't committed yet; none of the played
   // matches can count toward scoring (they're treated as pre-decided/preset).
@@ -164,6 +203,8 @@ export {
   SCORE_GUIDE_HOURS_AHEAD,
   findRailScoreGuideMatch,
   findGuidancePickKey,
+  findEarliestMissingPickKey,
+  describeMissingPick,
   isMatchScorable,
   buildScorableActual,
   getMatchTeams,

@@ -349,21 +349,26 @@
   }
 
   .bracket-viewport--compact .podium-final-card {
-    padding: 0.65rem;
     gap: 0.45rem;
-    border-radius: 0.75rem;
   }
 
-  .bracket-viewport--compact .podium-final-card__trophy {
-    padding-bottom: 0.15rem;
+  .bracket-viewport--compact .trophy-anim,
+  .bracket-viewport--compact .podium-column__above--champion .trophy-anim {
+    width: 5.25rem;
+    height: 5.25rem;
+    margin: -0.9rem -0.9rem -1.2rem;
   }
 
-  .bracket-viewport--compact .podium-final-card__trophy .text-5xl {
-    font-size: 2rem;
+  .bracket-viewport--compact .podium-column__above--champion .champion-banner__flag {
+    height: 3rem;
+    width: 4.5rem;
+  }
+
+  .bracket-viewport--compact .podium-column__above--champion .champion-banner__name {
+    font-size: 1.15rem;
   }
 
   .bracket-viewport--compact .podium-third-card {
-    padding: 0.45rem 0.5rem;
     gap: 0.35rem;
   }
 
@@ -616,13 +621,70 @@
   align-self: stretch;
 }
 
-/* Points pill hugs the bottom of the top track so the final card stays centered. */
+/* Points pill + trophy hug the bottom of the top track so the final card alone
+   sits at the podium's 50% line where the SF connectors meet. */
 .podium-column__above {
   grid-row: 1;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
   align-self: end;
   padding-bottom: 0.6rem;
+}
+
+.podium-column__trophy {
+  display: flex;
+  justify-content: center;
+}
+
+/* When a champion is set, the whole top track becomes the winner section:
+   celebratory gold light pours down from the top over pill → trophy → name. */
+.podium-column__above--champion {
+  align-self: stretch;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.6rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.podium-column__above--champion .trophy-anim {
+  width: 10.5rem;
+  height: 10.5rem;
+  margin: -1.9rem -1.9rem -2.3rem;
+}
+
+/* Inside the winner section the banner sheds its box — the section itself is
+   the celebration — and stacks flag over name, both bigger. */
+.podium-column__above--champion .champion-banner {
+  width: 100%;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.podium-column__above--champion .champion-banner::before {
+  display: none;
+}
+
+.podium-column__above--champion .champion-banner__flag {
+  height: 4.25rem;
+  width: 6.4rem;
+}
+
+.podium-column__above--champion .champion-banner__name {
+  font-size: 1.8rem;
+  letter-spacing: 0.06em;
+}
+
+.podium-column__above--champion .champion-banner__kicker {
+  font-size: 0.62rem;
+  letter-spacing: 0.34em;
 }
 
 /* Middle row = the final card, its center sits at the podium's 50% line where the
@@ -644,21 +706,25 @@
   justify-content: center;
 }
 
+/* No outer chrome — the match card itself is the card. */
 .podium-final-card {
-  background: linear-gradient(180deg, #1a1c22 0%, #111116 100%);
-  border: 1px solid rgba(91, 140, 255, 0.28);
-  border-radius: 1.125rem;
-  padding: 1.1rem;
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  box-shadow: 0 0 40px rgba(91, 140, 255, 0.1);
 }
 
-.podium-final-card__trophy {
-  display: flex;
-  justify-content: center;
-  padding-bottom: 0.3rem;
+/* animated trophy svg (raw-injected) */
+.trophy-anim {
+  width: 8.5rem;
+  height: 8.5rem;
+  margin: -1.5rem -1.5rem -1.9rem;
+  pointer-events: none;
+}
+
+.trophy-anim svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .podium-final-card__rival {
@@ -672,9 +738,6 @@
 }
 
 .podium-third-card {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 0.75rem;
-  padding: 0.6rem 0.7rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -687,6 +750,150 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- champion hero banner */
+.champion-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 180, 63, 0.35);
+  background:
+    radial-gradient(130% 190% at 50% 0%, rgba(255, 180, 63, 0.16) 0%, transparent 55%),
+    linear-gradient(180deg, #1a1b20 0%, #101014 100%);
+  box-shadow: 0 0 42px rgba(255, 180, 63, 0.12), inset 0 1px 0 rgba(255, 220, 150, 0.12);
+  overflow: hidden;
+}
+
+/* shine sweep */
+.champion-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 224, 150, 0.2) 50%, transparent 58%);
+  transform: translateX(-100%);
+  /* one sweep, paced to match the trophy draw-in (2.367s) */
+  animation: champion-shine 2.367s ease-in-out 1 forwards;
+  pointer-events: none;
+}
+
+@keyframes champion-shine {
+  0%, 30% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.champion-banner__flag-wrap {
+  position: relative;
+  display: inline-flex;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 28px rgba(255, 180, 63, 0.5);
+}
+
+/* looping shimmer across the flag */
+.champion-banner__flag-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.38) 50%, transparent 62%);
+  transform: translateX(-100%);
+  animation: champion-flag-shimmer 2.367s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes champion-flag-shimmer {
+  0%, 25% { transform: translateX(-100%); }
+  75%, 100% { transform: translateX(100%); }
+}
+
+.champion-banner__flag {
+  display: block;
+  height: 4.25rem;
+  width: 6.4rem;
+  object-fit: cover;
+}
+
+.champion-banner__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  text-align: center;
+}
+
+.champion-banner__kicker {
+  font-size: 0.6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.34em;
+  color: rgba(255, 200, 110, 0.85);
+  /* single line always — in the narrow podium column it may spill a little
+     wider than the container rather than wrapping the trailing ✦ */
+  white-space: nowrap;
+  width: max-content;
+  max-width: none;
+}
+
+.champion-banner__name {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff6e0 0%, #ffd98a 45%, #f0a93c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 12px rgba(255, 180, 63, 0.3));
+}
+
+.champion-banner__wing {
+  flex: 1;
+  max-width: 9rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 180, 63, 0.55));
+}
+
+.champion-banner__wing--right {
+  background: linear-gradient(90deg, rgba(255, 180, 63, 0.55), transparent);
+}
+
+@media (max-width: 767px) {
+  .champion-banner {
+    gap: 0.7rem;
+    padding: 0.65rem 0.9rem;
+  }
+
+  .champion-banner__flag {
+    height: 3.25rem;
+    width: 4.9rem;
+  }
+
+  .champion-banner__name {
+    font-size: 1.2rem;
+  }
+
+  .champion-banner__kicker {
+    letter-spacing: 0.24em;
+  }
+
+  .champion-banner__wing {
+    max-width: 3.5rem;
+  }
+}
+
+.mobile-bracket__podium .champion-banner {
+  margin-bottom: 0.75rem;
+}
+
+/* Inside the podium winner section the horizontal rule-line wings are noise. */
+.podium-column__above .champion-banner__wing {
+  display: none;
 }
 
 .points-pill {
@@ -981,10 +1188,8 @@
 }
 
 .mobile-bracket__champion-card {
-  padding: 1rem;
-  border-radius: 1rem;
-  background: linear-gradient(180deg, #1a1c22 0%, #111116 100%);
-  border: 1px solid rgba(91, 140, 255, 0.28);
+  display: flex;
+  justify-content: center;
   text-align: center;
 }
 
