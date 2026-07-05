@@ -106,7 +106,7 @@ export function LoginPage({
 
   const mobilePoints = [
     { label: "Round of 16", val: ROUNDS.find((r) => r.key === "r16")?.points ?? 10 },
-    { label: "Champion", val: ROUNDS.find((r) => r.key === "final")?.points ?? 50 },
+    { label: "Champion", val: ROUNDS.find((r) => r.key === "final")?.points ?? 30 },
     { label: "One side", val: SCORE_ONE_SIDE_POINTS },
     { label: "Both sides", val: SCORE_EXACT_POINTS },
   ];
