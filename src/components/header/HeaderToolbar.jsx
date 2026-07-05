@@ -1,25 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { IconChevronDown, IconLock, IconReset, IconSignOut } from "../common/icons";
+import { IconBracket, IconChevronDown, IconLock, IconMatchday, IconReset, IconSignOut, IconStandings } from "../common/icons";
 import { ProviderIcon } from "../common/ProviderIcon";
 import { SignOutConfirmModal } from "../modals/SignOutConfirmModal";
 
 // ----------------------------------------------------------------------------
 // HEADER TOOLBAR
 // ----------------------------------------------------------------------------
-export function ViewingAsPicker({ name, onClick, disabled = false }) {
+export function ViewingAsPicker({ name, isSelf = true, onClick, disabled = false }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="viewing-as-picker disabled:cursor-not-allowed disabled:opacity-50"
+      className={[
+        "viewing-as-picker disabled:cursor-not-allowed disabled:opacity-50",
+        !isSelf && "viewing-as-picker--other",
+      ].filter(Boolean).join(" ")}
       title="Tap to switch whose bracket you are viewing"
     >
-      <span className="viewing-as-picker__label">Viewing as</span>
-      <span className="viewing-as-picker__row">
-        <span className="viewing-as-picker__name">{name}</span>
-        <IconChevronDown className="viewing-as-picker__chevron" />
-      </span>
+      <span className="viewing-as-picker__label">Viewing</span>
+      <span className="viewing-as-picker__name">{isSelf ? "You" : name}</span>
+      <IconChevronDown className="viewing-as-picker__chevron" />
     </button>
   );
 }
@@ -97,6 +98,67 @@ export function AccountMenu({ email, authProvider, onSignOut }) {
         onConfirm={handleConfirmSignOut}
         signingOut={signingOut}
       />
+    </div>
+  );
+}
+
+const ALL_TABS = [
+  { id: "matchday", label: "Matchday", icon: IconMatchday },
+  { id: "bracket", label: "Bracket", icon: IconBracket },
+  { id: "standings", label: "Standings", icon: IconStandings },
+];
+
+export function TabNav({ active, onChange, variant = "top", className = "" }) {
+  const isBottom = variant === "bottom";
+  const tabs = ALL_TABS;
+  return (
+    <nav
+      className={["tab-nav", isBottom && "tab-nav--bottom", className].filter(Boolean).join(" ")}
+      aria-label="Sections"
+    >
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={[
+              "tab-nav__item",
+              isBottom && "tab-nav__item--bottom",
+              active === tab.id && "tab-nav__item--active",
+            ].filter(Boolean).join(" ")}
+            aria-current={active === tab.id ? "true" : undefined}
+          >
+            {isBottom && <Icon className="tab-nav__icon" />}
+            <span>{tab.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function ComparePill({ compareFriend, agreement, onOpen, onClear }) {
+  if (!compareFriend) {
+    return (
+      <button type="button" onClick={onOpen} className="compare-pill compare-pill--empty">
+        Compare with a rival
+      </button>
+    );
+  }
+  return (
+    <div className="compare-pill">
+      <span className="compare-pill__label">Comparing with</span>
+      <button type="button" onClick={onOpen} className="compare-pill__name">
+        {compareFriend.name}
+        {agreement.total > 0 && (
+          <span className="compare-pill__agreement">{agreement.agree}/{agreement.total}</span>
+        )}
+      </button>
+      <button type="button" onClick={onClear} className="compare-pill__clear" aria-label="Stop comparing">
+        ✕
+      </button>
     </div>
   );
 }

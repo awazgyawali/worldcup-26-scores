@@ -1,6 +1,105 @@
 import { Countdown } from "../common/Countdown";
 import { buildJourneyTimeline, journeyResult, JOURNEY_RESULT_LABEL } from "./journeyHelpers";
 import { flagSrc, fmtKickoff, liveMinute } from "../../lib/format";
+import { friendScorePredictionsForMatch, getScorePrediction, gradeScorePrediction, mapPredictedScores } from "../../lib/scoring";
+import { key } from "../../lib/rounds";
+
+function callInitials(name) {
+  return name.trim().slice(0, 2).toUpperCase();
+}
+
+/** Score "a–b" with each side green when it matches the real result, red when not. */
+function CallScore({ home, away, ftScore, graded }) {
+  if (home == null || away == null) return <>—</>;
+  if (!graded || !ftScore) return <>{home}–{away}</>;
+  return (
+    <>
+      <span className={home === ftScore[0] ? "text-[var(--agree)]" : "text-[var(--wrong)]"}>{home}</span>
+      <span className="text-[var(--text-muted)]">–</span>
+      <span className={away === ftScore[1] ? "text-[var(--agree)]" : "text-[var(--wrong)]"}>{away}</span>
+    </>
+  );
+}
+
+function LeagueCallsPanel({ entry, team, friends, numToSlot, selfUid }) {
+  if (!entry.num || !entry.team1 || !entry.team2) return null;
+  const slotKey = entry.isKnockout ? numToSlot?.get(entry.num) : `rail-${entry.num}`;
+  if (!slotKey) return null;
+
+  const others = friendScorePredictionsForMatch(friends, slotKey, entry, selfUid);
+  const self = friends.find((f) => f.uid === selfUid) ?? null;
+  const selfRaw = self ? getScorePrediction(self.winners, slotKey) : null;
+  const graded = entry.status === "played" && entry.ftScore;
+  const [selfHome, selfAway] = selfRaw ? mapPredictedScores(selfRaw, entry.team1, entry.team2, entry) : [null, null];
+  const selfEntry = selfRaw
+    ? {
+        uid: selfUid,
+        name: "You",
+        home: selfHome,
+        away: selfAway,
+        points: graded ? gradeScorePrediction(selfRaw, entry.ftScore).scorePoints : 0,
+        isSelf: true,
+      }
+    : null;
+
+  const all = [...(selfEntry ? [selfEntry] : []), ...others];
+  if (all.length === 0) return null;
+  if (graded) all.sort((a, b) => b.points - a.points || (a.isSelf ? -1 : 1));
+
+  return (
+    <div className="journey-side-panel journey-side-panel--wide">
+      <div className="journey-side-panel__head">
+        <span className="journey-side-panel__title">League calls on this one</span>
+        {graded && <span className="journey-side-panel__hint">one side +2 · exact +5</span>}
+      </div>
+      <div className="journey-calls">
+        {all.map((p) => {
+          const exact = graded && p.points >= 5;
+          return (
+            <div
+              key={p.uid}
+              className={["journey-call", p.isSelf && "journey-call--you", exact && "journey-call--exact"].filter(Boolean).join(" ")}
+            >
+              <span className={["journey-call__avatar", p.isSelf && "journey-call__avatar--you"].filter(Boolean).join(" ")}>
+                {p.isSelf ? "You" : callInitials(p.name)}
+              </span>
+              <span className="journey-call__name">
+                {p.name}
+                {exact && <span className="journey-call__badge">NAILED IT</span>}
+              </span>
+              <span className="journey-call__score">
+                <CallScore home={p.home} away={p.away} ftScore={entry.ftScore} graded={graded} />
+              </span>
+              {graded && (
+                <span className={["journey-call__pts", p.points > 0 && "journey-call__pts--hit"].filter(Boolean).join(" ")}>
+                  {p.points > 0 ? `+${p.points}` : "0"}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WhoRidesPanel({ team, friends }) {
+  const champions = friends.filter((f) => f.winners[key("final", 0)] === team.id);
+  if (champions.length === 0) return null;
+  return (
+    <div className="journey-side-panel">
+      <p className="journey-side-panel__title">Who rides {team.code}</p>
+      <div className="journey-riders">
+        {champions.map((f) => (
+          <span key={f.uid} className="journey-rider-pill">
+            <span className="mdi mdi-trophy-variant" aria-hidden="true" />
+            {f.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function JourneyGoalCell({ goal, align }) {
   if (!goal) return null;
@@ -114,7 +213,7 @@ export function JourneyGoalTimeline({ entry, team }) {
   );
 }
 
-export function JourneyMatchDetail({ entry, team, onOpenMatch }) {
+export function JourneyMatchDetail({ entry, team, onOpenMatch, friends = [], numToSlot, selfUid }) {
   const result = journeyResult(entry);
   const scored = entry.gf != null;
   const played = entry.status === "played";
@@ -188,6 +287,13 @@ export function JourneyMatchDetail({ entry, team, onOpenMatch }) {
         <div className="journey-detail__timeline-wrap">
           <p className="journey-detail__timeline-title">Goal timeline</p>
           <JourneyGoalTimeline entry={entry} team={team} />
+        </div>
+      )}
+
+      {friends.length > 0 && (
+        <div className="journey-side-panels">
+          <LeagueCallsPanel entry={entry} team={team} friends={friends} numToSlot={numToSlot} selfUid={selfUid} />
+          <WhoRidesPanel team={team} friends={friends} />
         </div>
       )}
 

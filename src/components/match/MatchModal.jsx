@@ -9,76 +9,38 @@ import {
   getScorePrediction,
   gradeScorePrediction,
   mapPredictedScores,
+  SCORE_ONE_SIDE_POINTS,
+  SCORE_EXACT_POINTS,
 } from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
 
 // ----------------------------------------------------------------------------
-// MATCH DETAIL MODAL — everything the JSON knows about one fixture.
+// MATCH DETAIL MODAL — timeline left, league score calls ranked by points right.
 // ----------------------------------------------------------------------------
-function GoalTimelineCell({ goal, align }) {
-  return (
-    <span className={["journey-timeline__goal", `journey-timeline__goal--${align}`].join(" ")}>
-      <span className="journey-timeline__scorer">{goal.name}</span>
-      {goal.penalty && <span className="journey-goal__tag">PEN</span>}
-      {goal.owngoal && <span className="journey-goal__tag journey-goal__tag--og">OG</span>}
-    </span>
-  );
-}
-
 function GoalTimelineRow({ goal }) {
   const isSide0 = goal.side === 0;
   return (
-    <li className="journey-timeline__row">
-      <span className="journey-timeline__side journey-timeline__side--left">
-        {isSide0 && <GoalTimelineCell goal={goal} align="right" />}
-      </span>
-      <span className="journey-timeline__minute">{goal.minute}′</span>
-      <span className="journey-timeline__side journey-timeline__side--right">
-        {!isSide0 && <GoalTimelineCell goal={goal} align="left" />}
-      </span>
-    </li>
-  );
-}
-
-function GoalTimelineSection({ shortLabel, goals, emptyLabel, pensScore }) {
-  const hasGoals = goals.length > 0;
-  const hasPens = pensScore != null;
-  if (!hasGoals && !hasPens && !emptyLabel) return null;
-
-  return (
-    <div className="journey-timeline__section">
-      <div className="journey-timeline__header">
-        <span className="journey-timeline__header-line" aria-hidden />
-        <span className="journey-timeline__header-label">{shortLabel}</span>
-        <span className="journey-timeline__header-line" aria-hidden />
-      </div>
-
-      <div className="journey-timeline__track">
-        <div className="journey-timeline__spine" aria-hidden />
-
-        {hasGoals ? (
-          <ul className="journey-timeline__list">
-            {goals.map((g, i) => (
-              <GoalTimelineRow key={`${g.name}-${g.minute}-${i}`} goal={g} />
-            ))}
-          </ul>
-        ) : emptyLabel ? (
-          <p className="journey-timeline__empty">{emptyLabel}</p>
-        ) : null}
-
-        {hasPens && (
-          <div className="journey-timeline__pens-row">
-            <span className="journey-timeline__side journey-timeline__side--left">
-              <span className="journey-timeline__pens-side journey-timeline__pens-side--us">{pensScore.a}</span>
-            </span>
-            <span className="journey-timeline__minute journey-timeline__minute--pens">PENS</span>
-            <span className="journey-timeline__side journey-timeline__side--right">
-              <span className="journey-timeline__pens-side journey-timeline__pens-side--them">{pensScore.b}</span>
-            </span>
-          </div>
+    <div className="mm-goal-row">
+      <span className="mm-goal-row__side mm-goal-row__side--left">
+        {isSide0 && (
+          <>
+            {goal.name}
+            {goal.penalty && <span className="mm-goal-tag">PEN</span>}
+            {goal.owngoal && <span className="mm-goal-tag mm-goal-tag--og">OG</span>}
+          </>
         )}
-      </div>
+      </span>
+      <span className="mm-goal-row__minute">{goal.minute}′</span>
+      <span className="mm-goal-row__side">
+        {!isSide0 && (
+          <>
+            {goal.name}
+            {goal.penalty && <span className="mm-goal-tag">PEN</span>}
+            {goal.owngoal && <span className="mm-goal-tag mm-goal-tag--og">OG</span>}
+          </>
+        )}
+      </span>
     </div>
   );
 }
@@ -95,84 +57,83 @@ export function GoalTimeline({ match }) {
     (goalMatchPhase(g) === "aet" ? aet : ft).push(g);
   }
   const showAet = aet.length > 0 || match.phase === "aet" || match.phase === "pens";
-  const pensScore = match.pens ? { a: match.pens[0], b: match.pens[1] } : null;
-  const hasAny = ft.length > 0 || aet.length > 0 || pensScore != null;
+  const pens = match.pens ?? null;
+  const hasAny = ft.length > 0 || aet.length > 0 || pens != null;
 
   if (!hasAny) return null;
 
   return (
-    <div className="journey-timeline px-1 py-1">
-      <GoalTimelineSection
-        shortLabel="FT"
-        goals={ft}
-        emptyLabel={ft.length === 0 ? "No goals in regulation" : null}
-      />
+    <div className="mm-timeline">
+      <p className="mm-timeline__phase">Regular time</p>
+      {ft.length > 0
+        ? ft.map((g, i) => <GoalTimelineRow key={`ft-${g.name}-${g.minute}-${i}`} goal={g} />)
+        : <p className="mm-timeline__empty">No goals in regulation</p>}
       {showAet && (
-        <GoalTimelineSection
-          shortLabel="AET"
-          goals={aet}
-          emptyLabel={aet.length === 0 ? "No goals in extra time" : null}
-        />
+        <>
+          <p className="mm-timeline__phase">Extra time</p>
+          {aet.length > 0
+            ? aet.map((g, i) => <GoalTimelineRow key={`aet-${g.name}-${g.minute}-${i}`} goal={g} />)
+            : <p className="mm-timeline__empty">No goals in extra time</p>}
+        </>
       )}
-      {pensScore && <GoalTimelineSection shortLabel="PENS" goals={[]} pensScore={pensScore} />}
+      {pens && (
+        <div className="mm-goal-row">
+          <span className="mm-goal-row__side mm-goal-row__side--left">{pens[0]}</span>
+          <span className="mm-goal-row__minute mm-goal-row__minute--pens">PENS</span>
+          <span className="mm-goal-row__side">{pens[1]}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-export function MatchTeamHeader({ team, refName, won, onFlagClick }) {
-  if (!team)
+function TeamSide({ team, refName, won, right = false, onFlagClick }) {
+  if (!team) {
     return (
-      <div className="flex flex-1 flex-col items-center gap-1.5">
-        <div className="grid h-10 w-14 place-items-center rounded-md bg-[var(--bg-elevated)] text-sm font-black text-[var(--text-muted)] ring-1 ring-[var(--border)]">
-          ?
+      <div className={["mm-team", right && "mm-team--right"].filter(Boolean).join(" ")}>
+        <div className="mm-team__body">
+          <div className="mm-team__name mm-team__name--tbd">
+            {isRef(refName) ? (refName[0] === "W" ? `Winner M${refName.slice(1)}` : `Loser M${refName.slice(1)}`) : "TBD"}
+          </div>
         </div>
-        <span className="text-[11px] font-semibold text-[var(--text-muted)]">
-          {isRef(refName) ? (refName[0] === "W" ? `Winner M${refName.slice(1)}` : `Loser M${refName.slice(1)}`) : "TBD"}
-        </span>
+        <div className="mm-team__flag mm-team__flag--empty">?</div>
       </div>
     );
+  }
   return (
     <button
       type="button"
       onClick={() => onFlagClick?.(team)}
-      className="group flex flex-1 flex-col items-center gap-1.5"
+      className={["mm-team", right && "mm-team--right"].filter(Boolean).join(" ")}
       title={`${team.name} — tournament journey`}
     >
-      <img
-        src={flagSrc(team.iso2)}
-        srcSet={flagSrcSet(team.iso2)}
-        alt=""
-        className="h-10 w-14 rounded-md object-cover shadow-lg ring-1 ring-black/40 transition group-hover:scale-105 group-hover:ring-[var(--gold)]/50"
-      />
-      <span className={["text-center text-[13px] font-bold leading-tight", won ? "text-[var(--pitch-glow)]" : "text-[var(--text-primary)]"].join(" ")}>
-        {team.name}
-        {won && " 🏅"}
-      </span>
+      <div className="mm-team__body">
+        <div className={["mm-team__name", won && "mm-team__name--won"].filter(Boolean).join(" ")}>{team.name}</div>
+        <div className="mm-team__code">{team.code}</div>
+      </div>
+      <img src={flagSrc(team.iso2)} srcSet={flagSrcSet(team.iso2)} alt="" className="mm-team__flag" />
     </button>
   );
 }
 
-function ScorePointsBadge({ points }) {
-  if (!points || points <= 0) return null;
-  return (
-    <span className="rounded-full bg-[var(--gold)]/15 px-1.5 py-0.5 text-[9px] font-bold text-[var(--gold-bright)]">
-      +{points}
-    </span>
-  );
-}
-
-/** Renders "a–b", coloring each side green/red against the final score once graded. */
+/** Renders "a–b": golden before FT, then green/red per side once graded. */
 function ScoreNumbers({ a, b, ftScore, graded }) {
-  if (a == null || b == null) return <>—</>;
-  if (!graded || !ftScore) return <>{a}–{b}</>;
+  if (a == null || b == null) return <span className="score-pred score-pred--empty">—</span>;
+  if (!graded || !ftScore) {
+    return (
+      <span className="score-pred score-pred--predicted">
+        {a}–{b}
+      </span>
+    );
+  }
   const aOk = a === ftScore[0];
   const bOk = b === ftScore[1];
   return (
-    <>
-      <span className={aOk ? "text-[var(--pitch-glow)]" : "text-[var(--wrong)]"}>{a}</span>
-      <span>–</span>
-      <span className={bOk ? "text-[var(--pitch-glow)]" : "text-[var(--wrong)]"}>{b}</span>
-    </>
+    <span className="score-pred score-pred--graded">
+      <span className={aOk ? "score-pred--hit" : "score-pred--miss"}>{a}</span>
+      <span className="score-pred__dash">–</span>
+      <span className={bOk ? "score-pred--hit" : "score-pred--miss"}>{b}</span>
+    </span>
   );
 }
 
@@ -215,7 +176,14 @@ function MatchTabPill({ m, active, winners, numToSlot, onSelect }) {
       ) : (
         <span className="match-tab-pill__flag match-tab-pill__flag--empty">·</span>
       )}
-      <span className="match-tab-pill__score">{scoreLabel ?? "vs"}</span>
+      <span
+        className={[
+          "match-tab-pill__score",
+          !played && predictedScore && "match-tab-pill__score--predicted",
+        ].filter(Boolean).join(" ")}
+      >
+        {scoreLabel ?? "vs"}
+      </span>
       {m.team2 ? (
         <img src={flagSrc(m.team2.iso2, 40)} alt="" className="match-tab-pill__flag" />
       ) : (
@@ -225,12 +193,11 @@ function MatchTabPill({ m, active, winners, numToSlot, onSelect }) {
   );
 }
 
-function MatchTabs({ matches, activeMatch, winners, numToSlot, onSelect }) {
-  const scrollRef = useRef(null);
+export function MatchTabs({ matches, activeMatch, winners, numToSlot, onSelect }) {
   if (!matches || matches.length === 0 || !activeMatch) return null;
 
   return (
-    <div ref={scrollRef} className="match-tabs nice-scroll edge-fade-x snap-x">
+    <div className="match-tabs nice-scroll edge-fade-x snap-x">
       {matches.map((m) => (
         <MatchTabPill
           key={m.num}
@@ -245,20 +212,19 @@ function MatchTabs({ matches, activeMatch, winners, numToSlot, onSelect }) {
   );
 }
 
-export function MatchModal({
-  match,
-  matches = [],
-  onSelectMatch,
-  winners,
-  numToSlot,
-  onClose,
-  onFlagClick,
-  scorePrediction,
-  onSaveScorePrediction,
-  slotKey,
-  friends = [],
-  selfUid,
-}) {
+function initials(name) {
+  return name.trim().slice(0, 2).toUpperCase();
+}
+
+// ----------------------------------------------------------------------------
+// MATCH DETAIL BODY — reusable scoreline + timeline + score calls. Used inside
+// the modal (other tabs) and inline in the Matchday master-detail pane.
+// onSaveScorePrediction(slotKey, score|null, match) → boolean.
+// ----------------------------------------------------------------------------
+export function MatchDetailBody({ match, winners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction }) {
+  const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
+  const scorePrediction = slotKey ? getScorePrediction(winners, slotKey) : null;
+
   const otherPredictions = useMemo(
     () => (match ? friendScorePredictionsForMatch(friends, slotKey, match, selfUid) : []),
     [friends, slotKey, match, selfUid]
@@ -276,24 +242,7 @@ export function MatchModal({
   useEffect(() => {
     setScoreA(scorePrediction?.[0] ?? "");
     setScoreB(scorePrediction?.[1] ?? "");
-  }, [scorePrediction]);
-
-  useEffect(() => {
-    if (!match || !onSelectMatch || matches.length === 0) return;
-    const onKey = (e) => {
-      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const idx = matches.findIndex((m) => m.num === match.num);
-      if (idx === -1) return;
-      const nextIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
-      if (nextIdx < 0 || nextIdx >= matches.length) return;
-      e.preventDefault();
-      onSelectMatch(matches[nextIdx]);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [match, matches, onSelectMatch]);
+  }, [scorePrediction?.[0], scorePrediction?.[1], match?.num]);
 
   if (!match) return null;
 
@@ -301,7 +250,7 @@ export function MatchModal({
   const live = match.status === "live";
   const kickoffPassed = !!match.kickoff && Date.now() >= match.kickoff.getTime();
   const upcoming = match.status === "upcoming" && !kickoffPassed;
-  const canEditScore = upcoming && !!onSaveScorePrediction;
+  const canEditScore = upcoming && !!onSaveScorePrediction && !!slotKey;
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -312,17 +261,18 @@ export function MatchModal({
     const sA = parseInt(scoreA, 10);
     const sB = parseInt(scoreB, 10);
     if (!isNaN(sA) && !isNaN(sB) && sA >= 0 && sB >= 0) {
-      const ok = await onSaveScorePrediction?.([sA, sB]);
+      const ok = await onSaveScorePrediction?.(slotKey, [sA, sB], match);
       if (ok) showToast(`Score prediction saved: ${sA}–${sB}`);
       else showToast("Could not save prediction.", "error");
     }
   };
 
+  const hasScorePrediction = scorePrediction != null;
+
   const handleClearClick = () => {
     if (hasScorePrediction) {
       setShowClearConfirm(true);
     } else {
-      // No prediction to clear, just reset inputs
       setScoreA("");
       setScoreB("");
     }
@@ -331,214 +281,201 @@ export function MatchModal({
   const handleClearConfirm = async () => {
     setScoreA("");
     setScoreB("");
-    const ok = await onSaveScorePrediction?.(null);
+    const ok = await onSaveScorePrediction?.(slotKey, null, match);
     if (ok) showToast("Score prediction cleared");
     else showToast("Could not clear prediction.", "error");
     setShowClearConfirm(false);
   };
 
-  const hasScorePrediction = scorePrediction != null;
   const [yourA, yourB] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);
   const yourPoints =
     played && scorePrediction && match.ftScore
       ? gradeScorePrediction(scorePrediction, match.ftScore).scorePoints
       : 0;
   const actualFtScore = match.ftScore ?? match.score;
-  const actualScoreDisplay = actualFtScore ? `${actualFtScore[0]}–${actualFtScore[1]}` : null;
   const teamsConfirmed = !!match.team1 && !!match.team2;
-  const resultLabel =
-    match.phase === "aet" || match.phase === "pens" ? "Final score (90 min)" : "Final score";
+
+  // Your bracket winner pick for this fixture (knockout slots only).
+  const bracketPickId = match.isKnockout && slotKey && !slotKey.startsWith("rail-") ? winners?.[slotKey] : null;
+  const bracketPickTeam =
+    bracketPickId === match.team1?.id ? match.team1 : bracketPickId === match.team2?.id ? match.team2 : null;
+  const bracketPickCorrect = played && match.winner && bracketPickId ? match.winner.id === bracketPickId : null;
+
+  const statusLabel = played
+    ? `${match.phase === "aet" ? "AFTER EXTRA TIME" : match.phase === "pens" ? "PENALTIES" : "FULL TIME"}${match.kickoff ? ` · ${match.kickoff.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase()}` : ""}`
+    : null;
 
   return (
-    <Modal open={!!match} onClose={onClose} maxW="max-w-2xl">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/30">
-            {match.group || match.roundLabel}
-          </span>
-          {match.num && <span className="text-[10px] font-bold text-[var(--text-muted)]">Match {match.num}</span>}
-        </div>
-        <button type="button" onClick={onClose} className="btn-ghost grid h-7 w-7 place-items-center rounded-lg text-xs" aria-label="Close">
-          ✕
-        </button>
-      </div>
-
-      {matches.length > 0 && onSelectMatch && (
-        <MatchTabs
-          matches={matches}
-          activeMatch={match}
-          winners={winners}
-          numToSlot={numToSlot}
-          onSelect={onSelectMatch}
-        />
-      )}
-
-      <div className="nice-scroll relative flex-1 overflow-y-auto">
-        <div className="flex items-start justify-center gap-3 px-4 pb-2 pt-5">
-          <MatchTeamHeader team={match.team1} refName={match.ref1} won={played && match.winnerIdx === 0} onFlagClick={onFlagClick} />
-          <div className="flex w-28 shrink-0 flex-col items-center pt-1">
+    <div className="mm-body">
+        {/* scoreline */}
+        <div className="mm-scoreline">
+          <TeamSide team={match.team1} refName={match.ref1} won={played && match.winnerIdx === 0} right onFlagClick={onFlagClick} />
+          <div className="mm-center">
             {match.score ? (
               <motion.div
-                initial={{ scale: 0.7, opacity: 0 }}
+                initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="font-display text-4xl tracking-widest text-[var(--text-primary)]"
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="mm-center__score"
               >
                 {match.score[0]}–{match.score[1]}
               </motion.div>
             ) : (
-              <div className="font-display text-3xl tracking-widest text-[var(--text-muted)]">–</div>
+              <div className="mm-center__vs">vs</div>
             )}
             {live && (
-              <span className="mt-0.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[var(--live)]">
+              <span className="mm-center__live">
                 <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--live)]" />
                 {liveMinute(match.kickoff)}
               </span>
             )}
-            {played && (
-              <span className="mt-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                {match.phase === "aet" ? "After extra time" : match.phase === "pens" ? "Penalties" : "Full time"}
-              </span>
-            )}
-            {match.pens && (
-              <motion.span
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="mt-1 rounded-full bg-[var(--gold)]/15 px-2.5 py-0.5 text-[11px] font-extrabold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/30"
-              >
-                {match.pens[0]}–{match.pens[1]} pens
-              </motion.span>
-            )}
-            {match.ht && (
-              <span className="mt-1 text-[10px] font-semibold text-[var(--text-muted)]">
-                HT {match.ht[0]}–{match.ht[1]}
-              </span>
-            )}
+            {statusLabel && <span className="mm-center__status">{statusLabel}</span>}
+            {match.pens && <span className="mm-center__pens">{match.pens[0]}–{match.pens[1]} pens</span>}
+            {match.ht && <span className="mm-center__ht">HT {match.ht[0]}–{match.ht[1]}</span>}
             {upcoming && match.kickoff && <Countdown to={match.kickoff} />}
           </div>
-          <MatchTeamHeader team={match.team2} refName={match.ref2} won={played && match.winnerIdx === 1} onFlagClick={onFlagClick} />
+          <TeamSide team={match.team2} refName={match.ref2} won={played && match.winnerIdx === 1} onFlagClick={onFlagClick} />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 px-4 pb-4 pt-2 md:grid-cols-2 md:items-start">
-          {/* LEFT PANEL — game info */}
-          <div className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
-            <p className="text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Match
-            </p>
-            {(played || live) && teamsConfirmed && (
-              <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  {resultLabel}
-                </span>
-                <span className="font-display text-xl tracking-widest text-[var(--text-primary)]">
-                  {actualScoreDisplay ?? "—"}
+        <div className="mm-grid">
+          {/* LEFT — match info + timeline */}
+          <div className="mm-card">
+            <p className="mm-card__title">Match</p>
+            <div className="mm-meta">
+              {match.kickoff && <span><span className="mdi mdi-clock-outline" /> {fmtKickoff(match.kickoff)}</span>}
+              {match.ground && <span><span className="mdi mdi-map-marker-outline" /> {match.ground}</span>}
+            </div>
+            <GoalTimeline match={match} />
+            {bracketPickTeam && (
+              <div className="mm-bracket-pick">
+                <span className="mm-bracket-pick__label">Your bracket pick:</span>
+                <span
+                  className={[
+                    "mm-bracket-pick__team",
+                    bracketPickCorrect === true && "mm-bracket-pick__team--right",
+                    bracketPickCorrect === false && "mm-bracket-pick__team--wrong",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <img src={flagSrc(bracketPickTeam.iso2, 40)} alt="" />
+                  {bracketPickTeam.code}
+                  {bracketPickCorrect === true && <span className="mdi mdi-check" />}
+                  {bracketPickCorrect === false && <span className="mdi mdi-close" />}
                 </span>
               </div>
             )}
-            <GoalTimeline match={match} />
-            <div className="flex flex-col items-center gap-1 rounded-xl bg-[var(--bg-mid)] px-3 py-2.5 text-[11px] font-medium text-[var(--text-muted)] ring-1 ring-[var(--border)]">
-              {match.kickoff && <span>🗓 {fmtKickoff(match.kickoff)}</span>}
-              {match.ground && <span>🏟 {match.ground}</span>}
-            </div>
           </div>
 
-          {/* RIGHT PANEL — predictions */}
+          {/* RIGHT — score calls */}
           {teamsConfirmed && (
-            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/50 p-3">
-              <p className="text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                Predictions
-              </p>
-              <div className="match-predictions-list">
-                <ul className="match-predictions-list__items">
-                  <li className="match-predictions-list__row">
-                    <span className="match-predictions-list__name font-bold text-[var(--gold-bright)]">You</span>
-                    {canEditScore ? (
-                      <span className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="20"
-                          value={scoreA}
-                          onChange={(e) => setScoreA(e.target.value)}
-                          className="h-7 w-9 rounded-md border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-sm text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
-                          placeholder="0"
-                          aria-label={`${match.team1?.code ?? "Team 1"} predicted score`}
-                        />
-                        <span className="text-[var(--text-muted)]">–</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="20"
-                          value={scoreB}
-                          onChange={(e) => setScoreB(e.target.value)}
-                          className="h-7 w-9 rounded-md border border-[var(--border)] bg-[var(--bg-deep)] text-center font-display text-sm text-[var(--text-primary)] focus:border-[var(--gold)] focus:outline-none"
-                          placeholder="0"
-                          aria-label={`${match.team2?.code ?? "Team 2"} predicted score`}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveScore}
-                          aria-label="Save prediction"
-                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--gold)]/20 text-xs font-bold text-[var(--gold-bright)] ring-1 ring-[var(--gold)]/40 transition hover:bg-[var(--gold)]/30"
-                        >
-                          ✓
-                        </button>
-                        {hasScorePrediction && (
-                          <button
-                            type="button"
-                            onClick={handleClearClick}
-                            aria-label="Clear prediction"
-                            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--bg-elevated)] text-xs font-bold text-[var(--text-muted)] transition hover:bg-[var(--border-strong)]"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <ScorePointsBadge points={yourPoints} />
-                        <span
-                          className={[
-                            "match-predictions-list__score",
-                            yourA == null ? "text-[var(--text-muted)]" : "",
-                          ].join(" ")}
-                        >
-                          <ScoreNumbers a={yourA} b={yourB} ftScore={actualFtScore} graded={played} />
-                        </span>
-                      </span>
-                    )}
-                  </li>
-                  {otherPredictions.map((entry) => (
-                    <li key={entry.uid} className="match-predictions-list__row">
-                      <span className="match-predictions-list__name">{entry.name}</span>
-                      <span className="flex items-center gap-1.5">
-                        <ScorePointsBadge points={entry.points} />
-                        <span className="match-predictions-list__score">
-                          <ScoreNumbers a={entry.home} b={entry.away} ftScore={actualFtScore} graded={played} />
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+            <div className="mm-card">
+              <div className="mm-card__head">
+                <p className="mm-card__title">{played ? "Score calls — graded" : "Score calls"}</p>
+                <span className="mm-card__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{SCORE_EXACT_POINTS}</span>
               </div>
+
+              <div className="mm-calls">
+                {/* You — editable tile for upcoming; same row layout as others once played */}
+                <div
+                  className={
+                    canEditScore
+                      ? "mm-call-row mm-call-row--you"
+                      : [
+                          "mm-call-row",
+                          played && yourPoints === SCORE_EXACT_POINTS && "mm-call-row--exact",
+                        ].filter(Boolean).join(" ")
+                  }
+                >
+                  <span
+                    className={
+                      canEditScore
+                        ? "mm-call-row__avatar mm-call-row__avatar--you"
+                        : "mm-call-row__avatar"
+                    }
+                  >
+                    {canEditScore ? "You" : "Yo"}
+                  </span>
+                  <span className="mm-call-row__name">
+                    You
+                    {played && yourPoints === SCORE_EXACT_POINTS && <span className="mm-nailed">NAILED IT</span>}
+                  </span>
+                  {canEditScore ? (
+                    <span className="mm-call-row__edit">
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scoreA}
+                        onChange={(e) => setScoreA(e.target.value)}
+                        className="mm-score-input mm-score-input--predicted"
+                        placeholder="0"
+                        aria-label={`${match.team1?.code ?? "Team 1"} predicted score`}
+                      />
+                      <span className="mm-call-row__dash">–</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={scoreB}
+                        onChange={(e) => setScoreB(e.target.value)}
+                        className="mm-score-input mm-score-input--predicted"
+                        placeholder="0"
+                        aria-label={`${match.team2?.code ?? "Team 2"} predicted score`}
+                      />
+                      <button type="button" onClick={handleSaveScore} aria-label="Save prediction" className="mm-mini-btn mm-mini-btn--save">
+                        ✓
+                      </button>
+                      {hasScorePrediction && (
+                        <button type="button" onClick={handleClearClick} aria-label="Clear prediction" className="mm-mini-btn">
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="mm-call-row__score">
+                        <ScoreNumbers a={yourA} b={yourB} ftScore={actualFtScore} graded={played} />
+                      </span>
+                      <span className={["mm-call-row__pts", yourPoints > 0 && "mm-call-row__pts--hit"].filter(Boolean).join(" ")}>
+                        {played ? (yourPoints > 0 ? `+${yourPoints}` : yourA != null ? "0" : "—") : ""}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {otherPredictions.map((entry) => (
+                  <div
+                    key={entry.uid}
+                    className={["mm-call-row", played && entry.points === SCORE_EXACT_POINTS && "mm-call-row--exact"].filter(Boolean).join(" ")}
+                  >
+                    <span className="mm-call-row__avatar">{initials(entry.name)}</span>
+                    <span className="mm-call-row__name">
+                      {entry.name}
+                      {played && entry.points === SCORE_EXACT_POINTS && <span className="mm-nailed">NAILED IT</span>}
+                    </span>
+                    <span className="mm-call-row__score">
+                      <ScoreNumbers a={entry.home} b={entry.away} ftScore={actualFtScore} graded={played} />
+                    </span>
+                    <span className={["mm-call-row__pts", entry.points > 0 && "mm-call-row__pts--hit"].filter(Boolean).join(" ")}>
+                      {played ? (entry.points > 0 ? `+${entry.points}` : "0") : ""}
+                    </span>
+                  </div>
+                ))}
+
+                {otherPredictions.length === 0 && !hasScorePrediction && !canEditScore && (
+                  <p className="mm-calls__empty">No score calls for this one.</p>
+                )}
+              </div>
+
               {missingPredictions.length > 0 && (
-                <div className="match-predictions-missing">
-                  <p className="match-predictions-missing__label">
-                    Haven&apos;t predicted yet ({missingPredictions.length})
+                <div className="mm-missing">
+                  <p className="mm-missing__label">
+                    {played ? `Sat this one out (${missingPredictions.length})` : `Haven't called it yet (${missingPredictions.length})`}
                   </p>
-                  <p className="match-predictions-missing__names">
+                  <p className="mm-missing__names">
                     {missingPredictions.map((f) => f.name).join(", ")}
+                    {played && " — zero points, zero excuses."}
                   </p>
                 </div>
-              )}
-              {canEditScore && (
-                <p className="text-center text-[9px] leading-relaxed text-[var(--text-muted)]">
-                  Predict the full-time score · one side correct{" "}
-                  <span className="font-bold text-[var(--gold-bright)]">+2 pts</span>
-                  {" · "}
-                  exact score <span className="font-bold text-[var(--gold-bright)]">+5 pts</span>
-                </p>
               )}
             </div>
           )}
@@ -600,6 +537,98 @@ export function MatchModal({
               {toast.message}
             </div>
           </motion.div>
+        )}
+    </div>
+  );
+}
+
+export function MatchModal({
+  match,
+  matches = [],
+  onSelectMatch,
+  winners,
+  numToSlot,
+  onClose,
+  onFlagClick,
+  onSaveScorePrediction,
+  friends = [],
+  selfUid,
+}) {
+  useEffect(() => {
+    if (!match || !onSelectMatch || matches.length === 0) return;
+    const onKey = (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const idx = matches.findIndex((m) => m.num === match.num);
+      if (idx === -1) return;
+      const nextIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
+      if (nextIdx < 0 || nextIdx >= matches.length) return;
+      e.preventDefault();
+      onSelectMatch(matches[nextIdx]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [match, matches, onSelectMatch]);
+
+  if (!match) return null;
+
+  const idx = matches.findIndex((m) => m.num === match.num);
+  const prevMatch = idx > 0 ? matches[idx - 1] : null;
+  const nextMatch = idx >= 0 && idx < matches.length - 1 ? matches[idx + 1] : null;
+  const navLabel = (m) =>
+    m.score
+      ? `${m.team1?.code ?? "TBD"} ${m.score[0]}–${m.score[1]} ${m.team2?.code ?? "TBD"}`
+      : `${m.team1?.code ?? "TBD"} v ${m.team2?.code ?? "TBD"}`;
+
+  return (
+    <Modal open={!!match} onClose={onClose} maxW="max-w-3xl" sheet>
+      <div className="mm-header">
+        <span className="mm-round-pill">{match.group || match.roundLabel}</span>
+        {match.num && <span className="mm-match-num">Match {match.num}</span>}
+        <div className="flex-1" />
+        <button type="button" onClick={onClose} className="mm-close" aria-label="Close">
+          ✕
+        </button>
+      </div>
+
+      {matches.length > 0 && onSelectMatch && (
+        <MatchTabs
+          matches={matches}
+          activeMatch={match}
+          winners={winners}
+          numToSlot={numToSlot}
+          onSelect={onSelectMatch}
+        />
+      )}
+
+      <div className="nice-scroll relative flex-1 overflow-y-auto">
+        <MatchDetailBody
+          match={match}
+          winners={winners}
+          numToSlot={numToSlot}
+          friends={friends}
+          selfUid={selfUid}
+          onFlagClick={onFlagClick}
+          onSaveScorePrediction={onSaveScorePrediction}
+        />
+
+        {(prevMatch || nextMatch) && (
+          <div className="mm-footer">
+            {prevMatch ? (
+              <button type="button" onClick={() => onSelectMatch?.(prevMatch)} className="mm-footer__nav">
+                <span className="mdi mdi-arrow-left" />
+                {navLabel(prevMatch)}
+              </button>
+            ) : <span />}
+            <span className="mm-footer__hint">Use arrow keys to move between matches</span>
+            {nextMatch ? (
+              <button type="button" onClick={() => onSelectMatch?.(nextMatch)} className="mm-footer__nav">
+                {navLabel(nextMatch)}
+                <span className="mdi mdi-arrow-right" />
+              </button>
+            ) : <span />}
+          </div>
         )}
       </div>
     </Modal>

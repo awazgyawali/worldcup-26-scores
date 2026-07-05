@@ -7,15 +7,19 @@ import { isMatchScorable, getMatchTeams, getThirdPlaceTeams } from "./bracket";
 // Note: All predictions are saved to Firebase only (anonymous login mandatory)
 // Local storage persistence has been removed
 export const SCORE_SUFFIX = "-score";
-export const CONNECTOR_STROKE = "rgba(100, 118, 140, 0.18)";
-export const CONNECTOR_STROKE_ACTIVE = "rgba(100, 118, 140, 0.32)";
-export const CONNECTOR_STROKE_LIT = "rgba(74, 222, 128, 0.82)";
-export const CONNECTOR_STROKE_WRONG = "rgba(248, 113, 113, 0.82)";
-export const CONNECTOR_STROKE_PRESET = "rgba(255, 255, 255, 0.62)";
 
-/** Verdict for the bracket connector line — reflects the winner pick (who advances),
- *  not the score prediction: "correct" if the picked team actually won, "wrong" if not,
- *  "preset" if the match was already played before the pick could count, else null.
+// Connector line colors — the line leaving a match shows whether that winner pick
+// was right (green), wrong (red), or moot because the match was decided before the
+// player's lock date (grey). Faint base line otherwise.
+export const CONNECTOR_STROKE = "rgba(255, 255, 255, 0.12)";
+export const CONNECTOR_STROKE_ACTIVE = "rgba(255, 255, 255, 0.2)";
+export const CONNECTOR_STROKE_LIT = "#43a047";
+export const CONNECTOR_STROKE_WRONG = "#e53935";
+export const CONNECTOR_STROKE_PRESET = "rgba(160, 170, 185, 0.75)";
+
+/** Verdict for the bracket connector line — reflects the winner pick (who advances):
+ *  "correct" if the picked team actually won, "wrong" if not, "preset" if the match
+ *  was already decided before the pick could count, else null.
  */
 export const connectorVerdictForSlot = (winners, actual, slotMatches, slotKey, lockTimeMs) => {
   const match = slotMatches[slotKey];
@@ -37,7 +41,7 @@ export const connectorStroke = (verdict, readOnly = false) => {
 
 export const connectorWidth = (verdict) => {
   if (!verdict) return 1;
-  if (verdict === "pending") return 1.5;
+  if (verdict === "preset") return 1.5;
   return 2;
 };
 
@@ -79,7 +83,7 @@ export function friendScorePredictionsForMatch(friends, scoreKey, match, exclude
       return { uid: f.uid, name: f.name, display: `${a}–${b}`, home: a, away: b, points };
     })
     .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
 }
 
 /** Locked, non-abandoned friends who haven't made a score prediction for this fixture (excludes self). */
@@ -202,6 +206,121 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
     }
   }
   return { correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints, totalPoints: points + scorePoints };
+}
+
+/** Last `n` graded bracket picks (winner picks only) in chronological order, for
+ *  standings "form" dots. Each entry is { slotKey, correct, kickoff }. */
+export function recentPickResults(winners, actual, slotMatches, lockTimeMs = null, n = 5) {
+  const graded = [];
+  for (const r of [...ROUNDS, THIRD_PLACE]) {
+    const count = r.matches ?? 1;
+    for (let m = 0; m < count; m++) {
+      const k = key(r.key, m);
+      const match = slotMatches?.[k];
+      if (!actual[k] || !winners[k]) continue;
+      if (!isMatchScorable(match, lockTimeMs)) continue;
+      graded.push({ slotKey: k, correct: actual[k] === winners[k], kickoff: match?.kickoff?.getTime?.() ?? 0 });
+    }
+  }
+  graded.sort((a, b) => a.kickoff - b.kickoff);
+  return graded.slice(-n);
+}
+
+function teamOnMatch(match, teamId) {
+  if (!match || !teamId) return null;
+  if (match.team1?.id === teamId) return match.team1;
+  if (match.team2?.id === teamId) return match.team2;
+  return null;
+}
+
+function ftDisplay(match) {
+  if (match?.ftScore) return `${match.ftScore[0]}–${match.ftScore[1]}`;
+  if (match?.score) return `${match.score[0]}–${match.score[1]}`;
+  return null;
+}
+
+function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actual, lockTimeMs) {
+  const played = match.status === "played";
+  const isFuture = !played;
+  if (played && !isMatchScorable(match, lockTimeMs)) return null;
+
+  const predictedWinnerId = friend.winners[slotKey];
+  const predictedScore = getScorePrediction(friend.winners, slotKey);
+  if (!predictedWinnerId && !predictedScore) return null;
+  if (isFuture && !match.team1 && !match.team2) return null;
+
+  let winnerCorrect = false;
+  let bracketPts = 0;
+  if (played && predictedWinnerId) {
+    const actualWinner = actual[slotKey] || match.winner?.id;
+    winnerCorrect = !!(actualWinner && predictedWinnerId === actualWinner);
+    bracketPts = winnerCorrect ? roundPoints : 0;
+  }
+
+  let scorePts = 0;
+  let scoreResult = null;
+  let scoreDisplay = predictedScore ? formatScorePredictionDisplay(predictedScore, match) : null;
+  if (played && predictedScore && match.ftScore) {
+    const graded = gradeScorePrediction(predictedScore, match.ftScore);
+    scorePts = graded.scorePoints;
+    scoreResult = graded.scoreResult;
+  }
+
+  return {
+    id: slotKey,
+    roundLabel,
+    matchNum: match.num,
+    match,
+    kickoff: match.kickoff?.getTime?.() ?? 0,
+    isFuture,
+    played,
+    bracketTeam: teamOnMatch(match, predictedWinnerId),
+    bracketCorrect: played ? winnerCorrect : null,
+    bracketPts,
+    scoreDisplay,
+    actualScore: played ? ftDisplay(match) : null,
+    scorePts,
+    scoreResult,
+    totalPts: bracketPts + scorePts,
+  };
+}
+
+/** All bracket + score predictions (played, live, upcoming) for compact mobile lists. */
+export function friendPredictionList(friend, { actual, slotMatches, byNum, lockTimeMs = null }) {
+  const events = [];
+
+  for (const r of [...ROUNDS, THIRD_PLACE]) {
+    const count = r.matches ?? 1;
+    for (let m = 0; m < count; m++) {
+      const slotKey = key(r.key, m);
+      const match = slotMatches?.[slotKey];
+      if (!match || match.status === "played" && !match.winner && !match.ftScore) continue;
+      const ev = buildFriendEvent(friend, match, slotKey, r.short, r.points, actual, lockTimeMs);
+      if (ev) events.push({ ...ev, kind: "knockout" });
+    }
+  }
+
+  for (const k of Object.keys(friend.winners)) {
+    if (!k.startsWith("rail-") || k.endsWith(SCORE_SUFFIX)) continue;
+    const matchNum = parseInt(k.replace("rail-", ""), 10);
+    if (Number.isNaN(matchNum)) continue;
+    const match = byNum?.get(matchNum);
+    if (!match) continue;
+    const label = match.group || match.roundLabel || "GRP";
+    const ev = buildFriendEvent(friend, match, k, label, 1, actual, lockTimeMs);
+    if (ev) events.push({ ...ev, kind: "group" });
+  }
+
+  events.sort((a, b) => {
+    if (a.isFuture !== b.isFuture) return a.isFuture ? -1 : 1;
+    return a.isFuture ? a.kickoff - b.kickoff : b.kickoff - a.kickoff;
+  });
+  return events;
+}
+
+/** Graded bracket + score-call history for standings expand / bottom sheet. */
+export function friendStandingsEvents(friend, { actual, slotMatches, byNum, lockTimeMs = null }) {
+  return friendPredictionList(friend, { actual, slotMatches, byNum, lockTimeMs }).filter((e) => e.played);
 }
 
 /** Get detailed prediction info for a single match - used when viewing others' brackets */

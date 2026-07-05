@@ -4,12 +4,11 @@ import { usePredictions } from "./hooks/usePredictions";
 import { useWorldCup } from "./hooks/useWorldCup";
 
 import { isRef } from "./lib/teams";
-import { ROUNDS, key, GUIDE_MAX_INTERACTIONS } from "./lib/rounds";
+import { ROUNDS, key, GUIDE_MAX_INTERACTIONS, REQUIRED_PICK_KEYS } from "./lib/rounds";
 import {
   getPickProgress,
   hasBracketPicks,
   buildStarterWinners,
-  findRailScoreGuideMatch,
   findGuidancePickKey,
   isMatchScorable,
   buildScorableActual,
@@ -19,7 +18,6 @@ import {
 } from "./lib/bracket";
 import {
   SCORE_SUFFIX,
-  getScorePrediction,
   setScorePrediction,
   normalizeScores,
   gradeScorePrediction,
@@ -29,14 +27,14 @@ import {
 } from "./lib/scoring";
 import { fmtCountdown, fmtTimeOnly } from "./lib/format";
 
-import { WCLogo } from "./components/common/icons";
-import { Confetti } from "./components/common/Confetti";
+import { BrandBadge } from "./components/common/icons";
 import { BootLoadingOverlay } from "./components/common/BootLoadingOverlay";
 import { ScrollBracket } from "./components/bracket/ScrollBracket";
-import { PredictionsRail, RailGuideLabel } from "./components/rail/PredictionsRail";
 import { TeamModal } from "./components/team/TeamModal";
 import { MatchModal } from "./components/match/MatchModal";
-import { ViewingAsPicker, HeaderToolbar, AccountMenu } from "./components/header/HeaderToolbar";
+import { ViewingAsPicker, HeaderToolbar, AccountMenu, TabNav, ComparePill } from "./components/header/HeaderToolbar";
+import { MatchdayPage } from "./components/matchday/MatchdayPage";
+import { StandingsPage } from "./components/standings/StandingsPage";
 import { LoginPage } from "./components/modals/LoginPage";
 import { FriendsModal } from "./components/modals/FriendsModal";
 import { LockConfirmModal } from "./components/modals/LockConfirmModal";
@@ -56,16 +54,30 @@ import { LockConfirmModal } from "./components/modals/LockConfirmModal";
 // MAIN APP
 // ----------------------------------------------------------------------------
 export default function App() {
+  const [tab, setTab] = useState("bracket");
   const [winners, setWinners] = useState(() => ({}));
   const [showFriends, setShowFriends] = useState(false);
+  const [friendsPickerMode, setFriendsPickerMode] = useState("view");
+  const [compareUid, setCompareUid] = useState(null);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
-  const [confetti, setConfetti] = useState(false);
   const [teamModal, setTeamModal] = useState(null);
   const [matchModal, setMatchModal] = useState(null);
   const [bracketGuideCount, setBracketGuideCount] = useState(0);
-  const [railScoreGuideCount, setRailScoreGuideCount] = useState(0);
-  const prevChampRef = useRef(null);
   const skipStarterSeedRef = useRef(false);
+
+  // Purge legacy localStorage keys from pre-Firebase versions of the app so
+  // stale offline picks can never be read or resurface — Firestore is the
+  // single source of truth.
+  useEffect(() => {
+    try {
+      localStorage.removeItem("wc26-bracket-winners-v4");
+      localStorage.removeItem("wc26-bracket-winners-v3");
+      localStorage.removeItem("wc26-user-name");
+    } catch {
+      // localStorage unavailable (e.g. private browsing) — nothing to clean up.
+    }
+  }, []);
+
   const onRemoteWinners = useCallback((remote, { force } = {}) => {
     setWinners((local) => {
       if (force) return remote;
@@ -197,11 +209,11 @@ export default function App() {
   const activeViewerLocked = viewingFriend ? viewingFriend.locked : locked;
   const activeUid = viewingFriend?.uid ?? uid;
 
-  const railScoreGuideMatch = useMemo(() => {
-    if (!locked || viewingFriend) return null;
-    return findRailScoreGuideMatch(railMatches, displayWinners, numToSlot);
-  }, [locked, viewingFriend, railMatches, displayWinners, numToSlot]);
-  const showRailScoreGuide = isViewingSelf && !!railScoreGuideMatch && railScoreGuideCount < GUIDE_MAX_INTERACTIONS;
+  // Default to Bracket while editing; jump to Matchday once the active viewer locks.
+  useEffect(() => {
+    if (activeViewerLocked) setTab("matchday");
+  }, [activeViewerLocked]);
+
   const showBracketGuide = isViewingSelf && !locked && bracketGuideCount < GUIDE_MAX_INTERACTIONS;
 
   const pickProgress = useMemo(() => getPickProgress(winners), [winners]);
@@ -216,25 +228,13 @@ export default function App() {
   const champion = teams.find((t) => t.id === displayWinners[key("final", 0)]) || null;
   const actualChampion = slotMatches[key("final", 0)]?.winner || null;
 
-  useEffect(() => {
-    const id = champion?.id || null;
-    if (readOnly) {
-      prevChampRef.current = id;
-      return;
-    }
-    if (id && id !== prevChampRef.current) {
-      setConfetti(true);
-      const t = setTimeout(() => setConfetti(false), 4200);
-      prevChampRef.current = id;
-      return () => clearTimeout(t);
-    }
-    if (!id) prevChampRef.current = null;
-  }, [champion, readOnly]);
 
   const onPick = useCallback(
     (roundIdx, matchIdx, team) => {
       if (!canEdit || locked) return;
       const rk = roundIdx === "third" ? "third-0" : key(ROUNDS[roundIdx].key, matchIdx);
+      const match = slotMatches[rk];
+      if (match?.kickoff && Date.now() >= match.kickoff.getTime()) return;
       let isNewPick = false;
       setWinners((prev) => {
         isNewPick = !prev[rk];
@@ -253,11 +253,16 @@ export default function App() {
         setBracketGuideCount((c) => Math.min(c + 1, GUIDE_MAX_INTERACTIONS));
       }
     },
-    [teams, canEdit, locked]
+    [teams, canEdit, locked, slotMatches]
   );
 
   const handleSelectFriend = useCallback(
     (friend) => {
+      if (friendsPickerMode === "compare") {
+        setCompareUid((prev) => (prev === friend.uid ? null : friend.uid));
+        setShowFriends(false);
+        return;
+      }
       if (friend.uid === uid) {
         exitFriendView();
       } else {
@@ -265,15 +270,24 @@ export default function App() {
       }
       setShowFriends(false);
     },
-    [viewFriend, exitFriendView, uid]
+    [viewFriend, exitFriendView, uid, friendsPickerMode]
   );
+
+  const openViewerPicker = useCallback(() => {
+    setFriendsPickerMode("view");
+    setShowFriends(true);
+  }, []);
+
+  const openComparePicker = useCallback(() => {
+    setFriendsPickerMode("compare");
+    setShowFriends(true);
+  }, []);
 
   const resetBracket = useCallback(() => {
     if (locked) return;
     skipStarterSeedRef.current = true;
     setBracketGuideCount(0);
     setWinners({});
-    prevChampRef.current = null;
     // Predictions are saved to Firebase only - no localStorage to clear
   }, [locked]);
 
@@ -302,14 +316,7 @@ export default function App() {
     if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
       return false;
     }
-    let isNewScore = false;
-    setWinners((prev) => {
-      isNewScore = !getScorePrediction(prev, slotKey);
-      return normalizeScores(setScorePrediction(prev, slotKey, score), teams);
-    });
-    if (isNewScore) {
-      setRailScoreGuideCount((c) => Math.min(c + 1, GUIDE_MAX_INTERACTIONS));
-    }
+    setWinners((prev) => normalizeScores(setScorePrediction(prev, slotKey, score), teams));
     return true;
   }, [teams]);
 
@@ -423,6 +430,38 @@ export default function App() {
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
 
+  const myRank = useMemo(() => {
+    const idx = rankedFriends.filter((f) => f.locked).findIndex((f) => f.uid === uid);
+    return idx >= 0 ? idx + 1 : null;
+  }, [rankedFriends, uid]);
+
+  const compareFriend = useMemo(
+    () => rankedFriends.find((f) => f.uid === compareUid && f.locked) ?? null,
+    [rankedFriends, compareUid]
+  );
+
+  const compareMap = useMemo(() => {
+    if (!compareFriend) return {};
+    const map = {};
+    for (const k of REQUIRED_PICK_KEYS) {
+      const mine = displayWinners[k];
+      const theirs = compareFriend.winners[k];
+      map[k] = !mine || !theirs ? null : mine === theirs ? "agree" : "differ";
+    }
+    return map;
+  }, [compareFriend, displayWinners]);
+
+  const compareAgreement = useMemo(() => {
+    const decided = Object.values(compareMap).filter(Boolean);
+    const agree = decided.filter((v) => v === "agree").length;
+    return { agree, total: decided.length };
+  }, [compareMap]);
+
+  // Selected rival stops existing (unlocked/left) — clear the stale selection.
+  useEffect(() => {
+    if (compareUid && !compareFriend) setCompareUid(null);
+  }, [compareUid, compareFriend]);
+
   const bracketProps = {
     winners: displayWinners,
     teams,
@@ -440,7 +479,8 @@ export default function App() {
     teamById,
     byNum,
     lockTimeMs: activeLockTimeMs,
-    railGuideLabel: isViewingSelf && locked ? <RailGuideLabel /> : null,
+    compareFriend: isViewingSelf ? compareFriend : null,
+    compareMap: isViewingSelf ? compareMap : null,
   };
   const showBracket = teams.length === 32;
   // Google/email sign-in is mandatory — anonymous sessions (including pre-existing
@@ -463,7 +503,6 @@ export default function App() {
       <AnimatePresence>
         {appLoading && <BootLoadingOverlay key="boot" label={bootLabel} />}
       </AnimatePresence>
-      <Confetti fire={confetti} />
       {syncing && !authError && !syncError && (
         <div className="sync-tooltip sync-tooltip--saving" role="status" aria-live="polite">
           Saving…
@@ -492,8 +531,9 @@ export default function App() {
         onClose={() => setShowFriends(false)}
         friends={rankedFriends}
         currentUid={uid}
-        activeUid={activeUid}
+        activeUid={friendsPickerMode === "compare" ? compareUid : activeUid}
         onSelect={handleSelectFriend}
+        mode={friendsPickerMode}
       />
       <LockConfirmModal
         open={showLockConfirm}
@@ -506,6 +546,9 @@ export default function App() {
         journey={teamModal ? journeys.get(teamModal.code) ?? [] : []}
         onClose={() => setTeamModal(null)}
         onOpenMatch={openMatchFromTeam}
+        friends={rankedFriends}
+        numToSlot={numToSlot}
+        selfUid={uid}
       />
       <MatchModal
         match={matchModal}
@@ -515,24 +558,7 @@ export default function App() {
         numToSlot={numToSlot}
         onClose={() => setMatchModal(null)}
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
-        scorePrediction={matchModal ? (() => {
-          const isKnockout = matchModal.isKnockout;
-          const key = isKnockout
-            ? numToSlot.get(matchModal.num)
-            : `rail-${matchModal.num}`;
-          return key ? getScorePrediction(winners, key) : null;
-        })() : null}
-        onSaveScorePrediction={async (score) => {
-          if (!matchModal) return false;
-          const isKnockout = matchModal.isKnockout;
-          const key = isKnockout
-            ? numToSlot.get(matchModal.num)
-            : `rail-${matchModal.num}`;
-          if (!key) return false;
-          const freshMatch = byNum.get(matchModal.num) ?? matchModal;
-          return saveScorePrediction(key, score, freshMatch);
-        }}
-        slotKey={matchModal ? (matchModal.isKnockout ? numToSlot.get(matchModal.num) : `rail-${matchModal.num}`) : null}
+        onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
         friends={friends}
         selfUid={uid}
       />
@@ -541,55 +567,59 @@ export default function App() {
         <>
       {/* HEADER */}
       <header className="broadcast-bar shrink-0 z-40">
-        <div className="relative mx-auto max-w-[1900px] px-4 py-2.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <WCLogo className="h-9 w-9 shrink-0 drop-shadow-lg" />
-              <div className="min-w-0 leading-tight">
-                <h1 className="font-display truncate text-xl tracking-wider sm:text-2xl">
-                  2x<span className="text-[var(--pitch-glow)]">Bet</span>
-                  <span className="ml-2 hidden text-[var(--text-muted)] sm:inline">by Aawaz</span>
-                </h1>
-                <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">
-                  {liveNums.length > 0 ? (
-                    <span className="text-[var(--live)]">● {liveNums.length} match{liveNums.length > 1 ? "es" : ""} live</span>
-                  ) : nextMatch?.kickoff ? (
+        <div className="broadcast-bar__inner relative mx-auto flex max-w-[1900px] items-center gap-3 px-4 py-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="broadcast-bar__desktop-only hidden sm:block">
+              <BrandBadge className="h-8 w-8 text-[13px]" />
+            </div>
+            <h1 className="font-display truncate text-lg font-extrabold tracking-tight">
+              2XBET
+              <span className="broadcast-bar__brand-sub ml-2 hidden text-[var(--text-muted)] lg:inline font-semibold">by Aawaz</span>
+            </h1>
+          </div>
+
+          <TabNav active={tab} onChange={setTab} className="broadcast-bar__desktop-only" />
+
+          <div className="flex flex-1 items-center justify-end gap-2">
+            <ViewingAsPicker
+              name={activeViewerName}
+              isSelf={isViewingSelf}
+              onClick={openViewerPicker}
+              disabled={!profileLoaded || requiresLogin || !authReady}
+            />
+            <div className="broadcast-bar__desktop-only flex items-center gap-2">
+              {isViewingSelf && locked && (
+                <div className="header-points-chip" title="Your points and rank">
+                  <span className="header-points-chip__value">{displayStats.totalPoints ?? displayStats.points}</span>
+                  <span className="header-points-chip__label">PTS</span>
+                  {myRank && (
                     <>
-                      next: {nextMatch.team1?.code ?? "TBD"} v {nextMatch.team2?.code ?? "TBD"} in{" "}
-                      <span className="tabular-nums text-[var(--next)]">{fmtCountdown(nextMatch.kickoff.getTime() - Date.now())}</span>
+                      <span className="header-points-chip__divider" />
+                      <span className="header-points-chip__rank">#{myRank}</span>
                     </>
-                  ) : lastUpdated ? (
-                    `updated ${fmtTimeOnly(lastUpdated)}`
-                  ) : (
-                    "connecting…"
                   )}
-                </p>
-              </div>
-            </div>
-
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-28 sm:px-40">
-              <div className="pointer-events-auto">
-                <ViewingAsPicker
-                  name={activeViewerName}
-                  onClick={() => setShowFriends(true)}
-                  disabled={!profileLoaded || requiresLogin || !authReady}
+                </div>
+              )}
+              {tab === "bracket" && isViewingSelf && (
+                <ComparePill
+                  compareFriend={compareFriend}
+                  agreement={compareAgreement}
+                  onOpen={openComparePicker}
+                  onClear={() => setCompareUid(null)}
                 />
-              </div>
-            </div>
-
-            <div className="flex flex-1 items-center justify-end gap-2">
-              <HeaderToolbar
-                isViewingSelf={isViewingSelf}
-                locked={activeViewerLocked}
-                canLock={pickProgress.complete}
-                lockTooltip={lockTooltip}
-                onOpenLock={() => setShowLockConfirm(true)}
-                onReset={resetBracket}
-              />
-              {isViewingSelf && (
-                <AccountMenu email={email} authProvider={authProvider} onSignOut={signOutUser} />
               )}
             </div>
+            <HeaderToolbar
+              isViewingSelf={isViewingSelf}
+              locked={activeViewerLocked}
+              canLock={pickProgress.complete}
+              lockTooltip={lockTooltip}
+              onOpenLock={() => setShowLockConfirm(true)}
+              onReset={resetBracket}
+            />
+            {isViewingSelf && (
+              <AccountMenu email={email} authProvider={authProvider} onSignOut={signOutUser} />
+            )}
           </div>
         </div>
       </header>
@@ -600,82 +630,61 @@ export default function App() {
         </div>
       )}
 
+      {tab === "matchday" && !appLoading && (
+        <MatchdayPage
+          railMatches={railMatches}
+          winners={displayWinners}
+          numToSlot={numToSlot}
+          rankedFriends={rankedFriends}
+          uid={uid}
+          onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
+          onOpenMatch={setMatchModal}
+          onFlagClick={setTeamModal}
+          locked={locked}
+          pickProgress={pickProgress}
+          isViewingSelf={isViewingSelf}
+          onGoToBracket={() => setTab("bracket")}
+          onOpenLock={() => setShowLockConfirm(true)}
+        />
+      )}
+
+      {tab === "standings" && !appLoading && (
+        <StandingsPage
+          friends={rankedFriends}
+          currentUid={uid}
+          activeUid={activeUid}
+          actual={actual}
+          slotMatches={slotMatches}
+          byNum={byNum}
+        />
+      )}
+
       {/* BRACKET */}
-      <main className="app-main">
-        {!showBracket && !loading && (
+      {tab === "bracket" && (
+        <main className="app-main">
+          {!showBracket && !loading && (
             <div className="flex flex-1 items-center justify-center px-4 py-12 text-center text-sm text-[var(--text-muted)]">
               Bracket seeds not available yet — the Round of 32 line-up appears once the group stage is complete.
             </div>
           )}
 
-        {showBracket && !appLoading && (
-          <ScrollBracket
-            {...bracketProps}
-            champion={champion}
-            actualChampion={actualChampion}
-            stats={displayStats}
-            showPoints={activeViewerLocked}
-            guidanceKey={guidanceKey}
-            showGuideBanner={showBracketGuide}
-            pickProgress={pickProgress}
-          />
-        )}
-      </main>
-
-      {railMatches.length > 0 && !appLoading && (
-        <PredictionsRail
-          matches={railMatches}
-          liveNums={liveNums}
-          nextNum={nextMatch?.num ?? null}
-          numToSlot={numToSlot}
-          winners={displayWinners}
-          actual={scorableActual}
-          teams={teams}
-          revealGrades={true} // Always show grading for played matches
-          onOpenMatch={setMatchModal}
-          // Rail predictions (non-knockout) can be edited even when bracket is locked
-          canEdit={isViewingSelf}
-          onPickRailWinner={isViewingSelf ? (matchNum, teamId, isKnockout) => {
-            // Only allow rail predictions on non-knockout games (base games like group stage)
-            // Knockout games (R32 onwards) predictions come from bracket only
-            if (isKnockout) return;
-            // Store rail predictions separately with rail- prefix
-            const key = `rail-${matchNum}`;
-            setWinners((prev) => ({
-              ...prev,
-              [key]: teamId === prev[key] ? undefined : teamId, // Toggle off if same
-            }));
-          } : undefined}
-          byNum={byNum}
-          isViewingOther={!!viewingFriend}
-          viewerName={viewingFriend?.name}
-          lockTimeMs={activeLockTimeMs}
-          showScoreGuide={showRailScoreGuide}
-          scoreGuideNum={railScoreGuideMatch?.num ?? null}
-          scoreGuideMatch={railScoreGuideMatch}
-          roundPoints={ROUNDS.reduce((acc, r) => {
-            for (let m = 0; m < r.matches; m++) {
-              acc[key(r.key, m)] = r.points;
-            }
-            return acc;
-          }, {})}
-        />
-      )}
-
-      {railMatches.length === 0 && (
-        <footer className="shrink-0 px-4 pb-5 pt-1 text-center text-[10.5px] font-medium text-[var(--text-muted)]/70">
-          {!isViewingSelf ? (
-            <>Tap &ldquo;Viewing as&rdquo; above to switch brackets · flags and match details still work in read-only mode.</>
-          ) : locked ? (
-            <>Your bracket is locked — picks cannot be changed until an admin unlocks your entry in the database.</>
-          ) : (
-            <>
-              Tap a team code to advance them · tap a flag for their tournament journey · tap the middle of a card for full match details.
-              Picks auto-save to the cloud{name ? ` as ${name}` : ""} & auto-grade against live results (refreshes every minute).
-            </>
+          {showBracket && !appLoading && (
+            <ScrollBracket
+              {...bracketProps}
+              champion={champion}
+              actualChampion={actualChampion}
+              stats={displayStats}
+              showPoints={activeViewerLocked}
+              guidanceKey={guidanceKey}
+              showGuideBanner={showBracketGuide}
+              pickProgress={pickProgress}
+            />
           )}
-        </footer>
+        </main>
       )}
+
+      {/* MOBILE BOTTOM NAVIGATION */}
+      <TabNav variant="bottom" active={tab} onChange={setTab} />
         </>
       )}
     </div>

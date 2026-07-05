@@ -8,7 +8,7 @@ export function Countdown({ to }) {
     return () => clearInterval(id);
   }, []);
   return (
-    <span className="mt-1 rounded-full bg-[var(--next)]/12 px-2.5 py-0.5 text-[11px] font-extrabold tabular-nums text-[var(--next)] ring-1 ring-[var(--next)]/30">
+    <span className="md-countdown">
       ⏱ {fmtCountdown(to.getTime() - Date.now())}
     </span>
   );

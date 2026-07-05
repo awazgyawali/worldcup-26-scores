@@ -1,0 +1,316 @@
+import { useMemo } from "react";
+import { friendStandingsEvents, friendPredictionList } from "../../lib/scoring";
+import { flagSrc } from "../../lib/format";
+import { getPickProgress } from "../../lib/bracket";
+
+function ScoreCall({ predicted, actual, scoreResult, played }) {
+  if (!predicted) return <span className="standings-detail__muted">No call</span>;
+  if (!played || !actual) {
+    return <span className="score-pred score-pred--predicted">{predicted}</span>;
+  }
+  const [pA, pB] = predicted.split("–").map((s) => parseInt(s, 10));
+  const [aA, aB] = actual.split("–").map((s) => parseInt(s, 10));
+  if (Number.isNaN(pA) || Number.isNaN(pB) || Number.isNaN(aA) || Number.isNaN(aB)) {
+    return <span className="score-pred score-pred--predicted">{predicted}</span>;
+  }
+  return (
+    <span className="score-pred score-pred--graded">
+      <span className={pA === aA ? "score-pred--hit" : "score-pred--miss"}>{pA}</span>
+      <span className="score-pred__dash">–</span>
+      <span className={pB === aB ? "score-pred--hit" : "score-pred--miss"}>{pB}</span>
+      {scoreResult === "exact" && <span className="standings-detail__exact-tag">exact</span>}
+    </span>
+  );
+}
+
+function CompactPredictionRow({ event }) {
+  const t1 = event.match.team1;
+  const t2 = event.match.team2;
+  const earned = event.played && event.totalPts > 0;
+
+  return (
+    <div
+      className={[
+        "standings-m-pred",
+        event.isFuture && "standings-m-pred--future",
+        earned && "standings-m-pred--earned",
+      ].filter(Boolean).join(" ")}
+    >
+      <div className="standings-m-pred__flags">
+        {t1 ? (
+          <img src={flagSrc(t1.iso2, 32)} alt="" className="standings-m-pred__flag" />
+        ) : (
+          <span className="standings-m-pred__flag-ph" />
+        )}
+        <span className="standings-m-pred__codes">
+          {t1?.code ?? "—"}<span className="standings-m-pred__vs">v</span>{t2?.code ?? "—"}
+        </span>
+        {t2 && <img src={flagSrc(t2.iso2, 32)} alt="" className="standings-m-pred__flag" />}
+      </div>
+      <div className="standings-m-pred__meta">
+        <span className="standings-m-pred__round">{event.roundLabel}</span>
+        {event.bracketTeam && (
+          <span className="standings-m-pred__bracket">
+            <img src={flagSrc(event.bracketTeam.iso2, 32)} alt="" className="standings-m-pred__flag-sm" />
+            {event.played ? (
+              <span className={event.bracketCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                {event.bracketCorrect ? "✓" : "✕"}
+              </span>
+            ) : (
+              <span className="standings-m-pred__pick-dot" aria-hidden="true" />
+            )}
+          </span>
+        )}
+      </div>
+      <div className="standings-m-pred__score">
+        <ScoreCall
+          predicted={event.scoreDisplay}
+          actual={event.actualScore}
+          scoreResult={event.scoreResult}
+          played={event.played}
+        />
+      </div>
+      <div className="standings-m-pred__pts">
+        {event.isFuture ? (
+          <span className="standings-m-pred__upcoming">up</span>
+        ) : event.totalPts > 0 ? (
+          `+${event.totalPts}`
+        ) : event.scoreDisplay || event.bracketTeam ? (
+          "0"
+        ) : (
+          "—"
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EventRow({ event, table = false }) {
+  const t1 = event.match.team1?.code ?? "TBD";
+  const t2 = event.match.team2?.code ?? "TBD";
+  const earned = event.totalPts > 0;
+
+  if (table) {
+    return (
+      <div className={["standings-events-table__row", earned && "standings-events-table__row--earned"].filter(Boolean).join(" ")}>
+        <span className="standings-events-table__round">{event.roundLabel}</span>
+        <span className="standings-events-table__match">
+          {event.matchNum && <span className="standings-events-table__num">M{event.matchNum}</span>}
+          {event.match.team1 && (
+            <img src={flagSrc(event.match.team1.iso2, 32)} alt="" className="standings-event__flag-sm" />
+          )}
+          {t1} v {t2}
+          {event.match.team2 && (
+            <img src={flagSrc(event.match.team2.iso2, 32)} alt="" className="standings-event__flag-sm" />
+          )}
+        </span>
+        <span className="standings-events-table__bracket">
+          {event.bracketTeam ? (
+            <>
+              <img src={flagSrc(event.bracketTeam.iso2, 32)} alt="" className="standings-event__flag-sm" />
+              {event.bracketTeam.code}
+              <span className={event.bracketCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                {event.bracketCorrect ? "✓" : "✕"}
+              </span>
+              {event.bracketPts > 0 && <span className="standings-events-table__mini-pts">+{event.bracketPts}</span>}
+            </>
+          ) : (
+            <span className="standings-detail__muted">—</span>
+          )}
+        </span>
+        <span className="standings-events-table__call">
+          <ScoreCall
+            predicted={event.scoreDisplay}
+            actual={event.actualScore}
+            scoreResult={event.scoreResult}
+            played={!!event.actualScore}
+          />
+        </span>
+        <span className="standings-events-table__ft">
+          {event.actualScore ? `FT ${event.actualScore}` : "—"}
+        </span>
+        <span className={["standings-events-table__pts", event.totalPts > 0 && "standings-events-table__pts--hit"].filter(Boolean).join(" ")}>
+          {event.totalPts > 0 ? `+${event.totalPts}` : event.scoreDisplay || event.bracketTeam ? "0" : "—"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={["standings-event", earned && "standings-event--earned"].filter(Boolean).join(" ")}>
+      <div className="standings-event__head">
+        <span className="standings-event__round">{event.roundLabel}</span>
+        {event.matchNum && <span className="standings-event__num">M{event.matchNum}</span>}
+        <span className="standings-event__fixture">
+          {event.match.team1 && (
+            <img src={flagSrc(event.match.team1.iso2, 32)} alt="" className="standings-event__flag" />
+          )}
+          {t1} v {t2}
+          {event.match.team2 && (
+            <img src={flagSrc(event.match.team2.iso2, 32)} alt="" className="standings-event__flag" />
+          )}
+        </span>
+        {event.totalPts > 0 && (
+          <span className="standings-event__total">+{event.totalPts}</span>
+        )}
+      </div>
+      <div className="standings-event__lines">
+        {event.bracketTeam && (
+          <div className="standings-event__line">
+            <span className="standings-event__label">Bracket</span>
+            <span className="standings-event__value">
+              <img src={flagSrc(event.bracketTeam.iso2, 32)} alt="" className="standings-event__flag-sm" />
+              {event.bracketTeam.code}
+              <span className={event.bracketCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                {event.bracketCorrect ? "✓" : "✕"}
+              </span>
+            </span>
+            <span className={event.bracketPts > 0 ? "standings-event__pts standings-event__pts--hit" : "standings-event__pts"}>
+              {event.bracketPts > 0 ? `+${event.bracketPts}` : "0"}
+            </span>
+          </div>
+        )}
+        <div className="standings-event__line">
+          <span className="standings-event__label">Score call</span>
+          <span className="standings-event__value">
+            <ScoreCall
+              predicted={event.scoreDisplay}
+              actual={event.actualScore}
+              scoreResult={event.scoreResult}
+              played={!!event.actualScore}
+            />
+            {event.actualScore && (
+              <span className="standings-detail__actual">FT {event.actualScore}</span>
+            )}
+          </span>
+          <span className={event.scorePts > 0 ? "standings-event__pts standings-event__pts--hit" : "standings-event__pts"}>
+            {event.scorePts > 0 ? `+${event.scorePts}` : event.scoreDisplay ? "0" : "—"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function StandingsFriendDetail({
+  friend,
+  actual,
+  slotMatches,
+  byNum,
+  onClose,
+  mobile = false,
+  inline = false,
+  compactMobile = false,
+}) {
+  const events = useMemo(
+    () =>
+      compactMobile
+        ? friendPredictionList(friend, { actual, slotMatches, byNum, lockTimeMs: friend.lockedAt })
+        : friendStandingsEvents(friend, { actual, slotMatches, byNum, lockTimeMs: friend.lockedAt }),
+    [friend, actual, slotMatches, byNum, compactMobile]
+  );
+  const progress = getPickProgress(friend.winners);
+  const earnedEvents = events.filter((e) => e.totalPts > 0);
+  const scorePts = (friend.scorePoints ?? 0) + (friend.railScorePoints ?? 0);
+  const bracketPts = (friend.points ?? 0) - scorePts;
+  const exact = (friend.scoreExact ?? 0) + (friend.railScoreExact ?? 0);
+  const oneSide = (friend.scoreOneSide ?? 0) + (friend.railScoreOneSide ?? 0);
+
+  return (
+    <div
+      className={[
+        "standings-detail",
+        mobile && "standings-detail--sheet",
+        inline && "standings-detail--inline",
+        compactMobile && "standings-detail--compact-mobile",
+      ].filter(Boolean).join(" ")}
+    >
+      {!inline && !compactMobile && (
+        <div className="standings-detail__head">
+          <div>
+            <div className="standings-detail__name">{friend.name}</div>
+            <div className="standings-detail__meta">
+              {friend.locked ? `${friend.points} pts total` : `${progress.filled}/${progress.total} picks in`}
+            </div>
+          </div>
+          {mobile && onClose && (
+            <button type="button" onClick={onClose} className="standings-detail__close" aria-label="Close">
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {friend.locked ? (
+        <>
+          {!compactMobile && (
+            <div className="standings-detail__summary">
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{friend.correct}/{friend.total}</span>
+                <span className="standings-detail__stat-label">Bracket picks</span>
+              </div>
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{bracketPts}</span>
+                <span className="standings-detail__stat-label">Bracket pts</span>
+              </div>
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{scorePts}</span>
+                <span className="standings-detail__stat-label">Score pts</span>
+              </div>
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{exact}/{oneSide}</span>
+                <span className="standings-detail__stat-label">Exact / one-side</span>
+              </div>
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{earnedEvents.length}</span>
+                <span className="standings-detail__stat-label">Scoring games</span>
+              </div>
+            </div>
+          )}
+
+          {!compactMobile && <div className="standings-detail__section-head">How they scored</div>}
+
+          {compactMobile ? (
+            <div className="standings-m-preds">
+              {events.length === 0 ? (
+                <p className="standings-detail__empty">No predictions yet.</p>
+              ) : (
+                events.map((event) => <CompactPredictionRow key={event.id} event={event} />)
+              )}
+            </div>
+          ) : inline ? (
+            <div className="standings-events-table">
+              <div className="standings-events-table__head" aria-hidden="true">
+                <span>Round</span>
+                <span>Match</span>
+                <span>Bracket pick</span>
+                <span>Score call</span>
+                <span>Result</span>
+                <span className="standings-events-table__pts-head">Pts</span>
+              </div>
+              {events.length === 0 ? (
+                <p className="standings-detail__empty">No graded picks yet.</p>
+              ) : (
+                events.map((event) => <EventRow key={event.id} event={event} table />)
+              )}
+            </div>
+          ) : (
+            <div className="standings-detail__events nice-scroll">
+              {events.length === 0 ? (
+                <p className="standings-detail__empty">No graded picks yet.</p>
+              ) : (
+                events.map((event) => <EventRow key={event.id} event={event} />)
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="standings-detail__open-note">
+            Still filling their bracket — {progress.total - progress.filled} picks left before they can lock in.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}

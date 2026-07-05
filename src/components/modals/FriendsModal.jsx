@@ -23,6 +23,11 @@ function ViewerDrawerRankedRow({ friend, rank, isMe, isActive, onSelect }) {
             <ProviderIcon provider={friend.authProvider} className="viewer-drawer-row__provider-icon" />
             <span className="viewer-drawer-row__name">{friend.name}</span>
             {isMe && <span className="viewer-drawer-row__tag">you</span>}
+            {friend.paid && (
+              <span className="paid-badge" title="Paid into the pot">
+                <span className="mdi mdi-cash" aria-hidden="true" />paid
+              </span>
+            )}
           </span>
           <span className="viewer-drawer-row__stat">
             {hasGraded ? `${friend.correct}/${friend.total} correct` : "No graded picks"}
@@ -50,6 +55,11 @@ function ViewerDrawerOpenRow({ friend, isMe, isActive, onSelect }) {
             <ProviderIcon provider={friend.authProvider} className="viewer-drawer-row__provider-icon" />
             <span className="viewer-drawer-row__name">{friend.name}</span>
             {isMe && <span className="viewer-drawer-row__tag">you</span>}
+            {friend.paid && (
+              <span className="paid-badge" title="Paid into the pot">
+                <span className="mdi mdi-cash" aria-hidden="true" />paid
+              </span>
+            )}
           </span>
         </span>
         <span className="viewer-drawer-row__open-badge">Open</span>
@@ -58,20 +68,26 @@ function ViewerDrawerOpenRow({ friend, isMe, isActive, onSelect }) {
   );
 }
 
-export function FriendsModal({ open, onClose, friends, currentUid, activeUid, onSelect }) {
-  const lockedFriends = friends.filter((f) => f.locked);
-  const openFriends = friends.filter((f) => !f.locked);
+export function FriendsModal({ open, onClose, friends, currentUid, activeUid, onSelect, mode = "view" }) {
+  const isCompare = mode === "compare";
+  const pool = isCompare ? friends.filter((f) => f.uid !== currentUid) : friends;
+  const lockedFriends = pool.filter((f) => f.locked);
+  const openFriends = pool.filter((f) => !f.locked);
 
   return (
     <Drawer open={open} onClose={onClose} width="max-w-[300px]">
       <div className="flex h-full min-h-0 flex-col">
         <div className="viewer-drawer-header">
           <div>
-            <h2 className="viewer-drawer-header__title">Switch viewer</h2>
+            <h2 className="viewer-drawer-header__title">{isCompare ? "Compare with" : "Switch viewer"}</h2>
             <p className="viewer-drawer-header__meta">
-              {friends.length > 0
-                ? `${lockedFriends.length} locked · ${openFriends.length} still editing`
-                : "Pick a bracket to view"}
+              {isCompare
+                ? lockedFriends.length > 0
+                  ? `${lockedFriends.length} locked bracket${lockedFriends.length === 1 ? "" : "s"} to compare`
+                  : "No locked brackets to compare yet"
+                : friends.length > 0
+                  ? `${lockedFriends.length} locked · ${openFriends.length} still editing`
+                  : "Pick a bracket to view"}
             </p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm" aria-label="Close">
@@ -80,13 +96,15 @@ export function FriendsModal({ open, onClose, friends, currentUid, activeUid, on
         </div>
 
         <div className="viewer-drawer-body">
-          {friends.length === 0 ? (
-            <p className="viewer-drawer-empty">No predictions yet — be the first!</p>
+          {pool.length === 0 ? (
+            <p className="viewer-drawer-empty">
+              {isCompare ? "No other locked brackets yet." : "No predictions yet — be the first!"}
+            </p>
           ) : (
             <>
               {lockedFriends.length > 0 && (
                 <section className="viewer-drawer-section">
-                  <p className="viewer-drawer-section__label">Leaderboard</p>
+                  <p className="viewer-drawer-section__label">{isCompare ? "Locked brackets" : "Leaderboard"}</p>
                   <div className="viewer-drawer-columns" aria-hidden="true">
                     <span>#</span>
                     <span>Player</span>
@@ -107,7 +125,7 @@ export function FriendsModal({ open, onClose, friends, currentUid, activeUid, on
                 </section>
               )}
 
-              {openFriends.length > 0 && (
+              {!isCompare && openFriends.length > 0 && (
                 <section className="viewer-drawer-section">
                   <p className="viewer-drawer-section__label">Still editing · {openFriends.length}</p>
                   <ul className="viewer-drawer-list">

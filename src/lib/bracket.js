@@ -93,13 +93,15 @@ function findGuidancePickKey(winners, teams, actual, slotMatches, nextMatch, num
 }
 
 function isMatchScorable(match, lockTimeMs) {
-  if (!lockTimeMs || !match?.kickoff) return true;
+  // No lock date means the bracket isn't committed yet; none of the played
+  // matches can count toward scoring (they're treated as pre-decided/preset).
+  if (!lockTimeMs || !match?.kickoff) return false;
   return match.kickoff.getTime() >= lockTimeMs;
 }
 
 function buildScorableActual(actual, slotMatches, lockTimeMs) {
-  if (!lockTimeMs) return actual;
   const filtered = {};
+  if (!lockTimeMs) return filtered;
   for (const [k, id] of Object.entries(actual)) {
     if (isMatchScorable(slotMatches[k], lockTimeMs)) filtered[k] = id;
   }

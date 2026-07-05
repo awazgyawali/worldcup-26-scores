@@ -4,9 +4,9 @@ import { flagSrc, flagSrcSet } from "../../lib/format";
 // ----------------------------------------------------------------------------
 // TEAM ROW — [flag] CODE [verdict] [score]
 // ----------------------------------------------------------------------------
-export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, score, predictedScore, isMatchWinner, align = "left" }) {
+export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, isMatchWinner, align = "left", compareDot = null, compareLabel = null }) {
   const empty = !team;
-  const disabled = empty || locked || readOnly;
+  const disabled = empty || locked || readOnly || started;
   const right = align === "right";
   const displayScore = score != null ? score : predictedScore;
   const isPredicted = score == null && predictedScore != null;
@@ -41,15 +41,17 @@ export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
           ? undefined
           : readOnly
             ? "Picks are read-only"
-            : locked
-              ? "Both teams must be decided first"
-              : `Advance ${team.name}`
+            : started
+              ? "Match already started — no changes allowed"
+              : locked
+                ? "Both teams must be decided first"
+                : `Advance ${team.name}`
       }
       className={[
-        "group/row relative flex h-[22px] w-full items-center gap-1.5 rounded-sm px-1.5 transition-all duration-200",
+        "group/row relative flex h-[22px] w-full items-center gap-1.5 rounded-md px-1.5 transition-all duration-200",
         right ? "flex-row-reverse text-right" : "text-left",
         strip,
-        empty ? "cursor-default" : locked || readOnly ? "cursor-default" : "cursor-pointer",
+        empty ? "cursor-default" : locked || readOnly || started ? "cursor-default" : "cursor-pointer",
       ].join(" ")}
     >
       {empty ? (
@@ -88,6 +90,23 @@ export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
           <motion.span initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-[var(--pitch-glow)]">✓</motion.span>
         ) : null}
       </span>
+
+      {compareDot && (
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: compareDot === "agree" ? "var(--agree)" : "var(--pitch-glow)" }}
+          title={compareDot === "agree" ? "Rival picked the same team" : "Rival picked differently"}
+        />
+      )}
+      {compareLabel && (
+        <span
+          className="shrink-0 rounded px-1 text-[8px] font-black uppercase tracking-wide text-[var(--pitch-glow)]"
+          style={{ background: "color-mix(in oklch, var(--pitch) 18%, transparent)" }}
+          title="Rival's pick"
+        >
+          {compareLabel}
+        </span>
+      )}
 
       {displayScore != null && (
         <span

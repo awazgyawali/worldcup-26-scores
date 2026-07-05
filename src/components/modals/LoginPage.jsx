@@ -1,5 +1,48 @@
 import { useState } from "react";
-import { IconGoogle, IconMail } from "../common/icons";
+import { IconGoogle, IconMail, BrandBadge } from "../common/icons";
+import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
+import { SCORE_ONE_SIDE_POINTS, SCORE_EXACT_POINTS } from "../../lib/scoring";
+
+function BrandPanel({ onShowRules, scoringRows }) {
+
+  return (
+    <div className="login-brand">
+      <div className="flex items-center gap-3">
+        <BrandBadge className="h-10 w-10 text-base" />
+        <h2 className="font-display text-lg tracking-wider text-white">
+          2XBET <span className="text-white/45 font-semibold">by Aawaz</span>
+        </h2>
+      </div>
+
+      <div className="login-brand__tagline">
+        <h1>Call every game.<br />Outscore your friends.</h1>
+        <p>
+          Pick the full World Cup 2026 bracket, then call exact scores match by match.
+          The trophy is bragging rights.
+        </p>
+      </div>
+
+      <div className="login-brand__scoring">
+        <p className="login-brand__scoring-title">How points work</p>
+        <div className="login-brand__scoring-grid">
+          {scoringRows.map((row) => (
+            <div
+              key={row.label}
+              className={["login-brand__scoring-row", row.highlight && "login-brand__scoring-row--highlight"].filter(Boolean).join(" ")}
+            >
+              <span>{row.label}</span>
+              <span className="login-brand__scoring-pts">{row.points}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button type="button" onClick={onShowRules} className="login-brand__rules">
+        Read the full rules — how it works &amp; points
+      </button>
+    </div>
+  );
+}
 
 // ----------------------------------------------------------------------------
 // LOGIN PAGE — dedicated full-screen onboarding gate (not a dismissible modal)
@@ -21,6 +64,21 @@ export function LoginPage({
   const [info, setInfo] = useState("");
 
   const busy = submitting || linkingGoogle;
+
+  const scoringRows = [
+    ...ROUNDS.filter((r) => r.key !== "final").map((r) => ({ label: `${r.label} pick`, points: r.points })),
+    { label: THIRD_PLACE.label, points: THIRD_PLACE.points },
+    { label: "Champion", points: ROUNDS.find((r) => r.key === "final").points, highlight: true },
+    { label: "Group-stage pick", points: 1 },
+    { label: "Score call: side / exact", points: `${SCORE_ONE_SIDE_POINTS} / ${SCORE_EXACT_POINTS}`, highlight: true },
+  ];
+
+  const mobilePoints = [
+    { label: "Round of 16", val: ROUNDS.find((r) => r.key === "r16")?.points ?? 10 },
+    { label: "Quarter-finals", val: ROUNDS.find((r) => r.key === "qf")?.points ?? 15 },
+    { label: "Champion", val: ROUNDS.find((r) => r.key === "final")?.points ?? 50 },
+    { label: "Exact score", val: SCORE_EXACT_POINTS },
+  ];
 
   const resetMessages = () => {
     setError("");
@@ -113,55 +171,76 @@ export function LoginPage({
     }
   };
 
-  return (
-    <div className="login-page">
-      <div className="login-page__card">
-        {/* Header */}
-        <div className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-4">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">⚽</span>
-            <div>
-              <h2 className="font-display text-xl tracking-wider text-[var(--text-primary)]">2xBet by Aawaz</h2>
-              <p className="text-xs text-[var(--text-muted)]">World Cup 2026 Bracket Challenge</p>
+  if (mode === "rules") {
+    return (
+      <div className="login-page">
+        <div className="login-page__card">
+          {/* Header */}
+          <div className="border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-4">
+            <div className="flex items-center gap-3">
+              <BrandBadge className="h-9 w-9 text-sm" />
+              <div>
+                <h2 className="font-display text-xl tracking-wider text-[var(--text-primary)]">2XBET by Aawaz</h2>
+                <p className="text-xs text-[var(--text-muted)]">World Cup 2026 Bracket Challenge</p>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6">
-          {mode === "rules" ? (
+          <div className="flex-1 overflow-y-auto p-6">
             <RulesPanel onBack={() => setMode("signin")} />
-          ) : (
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-split">
+        <BrandPanel onShowRules={() => setMode("rules")} scoringRows={scoringRows} mobilePoints={mobilePoints} />
+
+        <div className="login-auth">
+          <div className="login-auth__inner">
+            <div className="login-auth__brand-row">
+              <BrandBadge className="h-9 w-9 text-sm" />
+              <span className="text-lg font-extrabold tracking-tight text-white">2XBET</span>
+            </div>
+
+            <div className="login-mobile-hero">
+              <h1>Call every game. Outscore your friends.</h1>
+              <p>Pick the World Cup 2026 bracket, then call exact scores match by match.</p>
+            </div>
+
             <>
+              <div className="mb-5">
+                <h2 className="text-[1.625rem] font-extrabold tracking-tight text-[var(--text-primary)]">Get in the game</h2>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+                  Real account required — anonymous brackets don&apos;t make the leaderboard.
+                </p>
+              </div>
               {mode !== "name" && (
-                <div className="mb-4 flex rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/30 p-1">
+                <div className="login-tab-toggle">
                   <button
                     type="button"
                     onClick={() => { setMode("signin"); resetMessages(); }}
-                    className={`flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
-                      mode === "signin" ? "bg-[var(--pitch)] text-white" : "text-[var(--text-muted)]"
-                    }`}
+                    className={["login-tab-toggle__btn", mode === "signin" && "login-tab-toggle__btn--active"].filter(Boolean).join(" ")}
                   >
-                    Sign In
+                    SIGN IN
                   </button>
                   <button
                     type="button"
                     onClick={() => { setMode("signup"); resetMessages(); }}
-                    className={`flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
-                      mode === "signup" ? "bg-[var(--pitch)] text-white" : "text-[var(--text-muted)]"
-                    }`}
+                    className={["login-tab-toggle__btn", mode === "signup" && "login-tab-toggle__btn--active"].filter(Boolean).join(" ")}
                   >
-                    Sign Up
+                    SIGN UP
                   </button>
                 </div>
               )}
 
               {(mode === "signin" || mode === "signup") && (
-                <form onSubmit={handleEmailAuth} className="flex flex-col gap-3">
+                <form onSubmit={handleEmailAuth} className="mt-6 flex flex-col gap-4">
                   {mode === "signup" && (
                     <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                        Display Name
-                      </label>
+                      <label className="login-field-label">Display Name</label>
                       <input
                         type="text"
                         value={name}
@@ -173,9 +252,7 @@ export function LoginPage({
                     </div>
                   )}
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                      Email
-                    </label>
+                    <label className="login-field-label">Email</label>
                     <input
                       type="email"
                       value={email}
@@ -186,9 +263,7 @@ export function LoginPage({
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                      Password
-                    </label>
+                    <label className="login-field-label">Password</label>
                     <input
                       type="password"
                       value={password}
@@ -203,7 +278,7 @@ export function LoginPage({
                     <button
                       type="button"
                       onClick={() => { setMode("reset"); resetMessages(); }}
-                      className="self-end text-xs font-semibold text-[var(--gold-bright)] hover:underline"
+                      className="self-end text-sm font-semibold text-[var(--pitch-glow)] hover:underline"
                     >
                       Forgot password?
                     </button>
@@ -212,27 +287,18 @@ export function LoginPage({
                   {error && <p className="text-xs font-semibold text-[var(--live)]">{error}</p>}
                   {info && <p className="text-xs font-semibold text-[var(--pitch-glow)]">{info}</p>}
 
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--pitch)] px-4 py-3 text-sm font-bold tracking-tight text-white transition-opacity disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={busy} className="login-btn-primary">
                     <IconMail className="h-4 w-4" />
                     {submitting ? "Please wait…" : mode === "signup" ? "Create Account" : "Sign In"}
                   </button>
 
                   <div className="flex items-center gap-3">
                     <div className="h-px flex-1 bg-[var(--border)]" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">or</span>
+                    <span className="text-[0.6875rem] font-bold uppercase tracking-wider text-[var(--text-muted)]">or</span>
                     <div className="h-px flex-1 bg-[var(--border)]" />
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleGoogle}
-                    disabled={busy}
-                    className="flex w-full items-center justify-center gap-3 rounded-xl border border-[var(--border-strong)] bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-opacity hover:bg-gray-50 disabled:opacity-50"
-                  >
+                  <button type="button" onClick={handleGoogle} disabled={busy} className="login-btn-google">
                     <IconGoogle className="h-5 w-5" />
                     {linkingGoogle ? "Connecting…" : "Continue with Google"}
                   </button>
@@ -240,7 +306,7 @@ export function LoginPage({
                   <button
                     type="button"
                     onClick={() => setMode("rules")}
-                    className="text-xs font-semibold text-[var(--gold-bright)] hover:underline"
+                    className="text-center text-sm font-semibold text-[var(--pitch-glow)] hover:underline"
                   >
                     📖 How it works & Points
                   </button>
@@ -288,7 +354,7 @@ export function LoginPage({
               )}
 
               {mode === "name" && (
-                <form onSubmit={handleName} className="flex flex-col gap-4">
+                <form onSubmit={handleName} className="mt-6 flex flex-col gap-4">
                   <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-mid)]/30 p-4">
                     <p className="text-sm text-[var(--text-secondary)]">
                       Your account is signed in — just add a display name to finish setting up.
@@ -321,7 +387,16 @@ export function LoginPage({
                 </form>
               )}
             </>
-          )}
+
+            <div className="login-mobile-points">
+              {mobilePoints.map((p) => (
+                <div key={p.label} className="login-mobile-points__item">
+                  <span>{p.label}</span>
+                  <span>{p.val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2,14 +2,14 @@
 // BRACKET SHAPE — JSON match numbers per slot, left→right.
 // ----------------------------------------------------------------------------
 export const ROUNDS = [
-  { key: "r32", label: "Round of 32", short: "R32", matches: 16, points: 1, nums: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87] },
-  { key: "r16", label: "Round of 16", short: "R16", matches: 8, points: 2, nums: [89, 90, 93, 94, 91, 92, 95, 96] },
-  { key: "qf", label: "Quarter-finals", short: "QF", matches: 4, points: 4, nums: [97, 98, 99, 100] },
-  { key: "sf", label: "Semi-finals", short: "SF", matches: 2, points: 7, nums: [101, 102] },
-  { key: "final", label: "Final", short: "F", matches: 1, points: 12, nums: [104] },
+  { key: "r32", label: "Round of 32", short: "R32", matches: 16, points: 5, nums: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87] },
+  { key: "r16", label: "Round of 16", short: "R16", matches: 8, points: 10, nums: [89, 90, 93, 94, 91, 92, 95, 96] },
+  { key: "qf", label: "Quarter-finals", short: "QF", matches: 4, points: 15, nums: [97, 98, 99, 100] },
+  { key: "sf", label: "Semi-finals", short: "SF", matches: 2, points: 20, nums: [101, 102] },
+  { key: "final", label: "Final", short: "F", matches: 1, points: 50, nums: [104] },
 ];
 export const FINAL_ROUND = ROUNDS.length - 1;
-export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 3, num: 103 };
+export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 30, num: 103 };
 export const key = (r, m) => `${r}-${m}`;
 /** Every knockout slot the user must fill before locking. */
 export const REQUIRED_PICK_KEYS = [

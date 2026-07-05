@@ -19,14 +19,19 @@ async function main() {
 
   // merge VDFGxz0I7zZQZenYvhUFBXHuHHn2 uid to N3A0OEfdVBV1cMNc2t45Z4wx1pY2
 
-  const predictions = await firestore.collection("predictions").where("uid", "==", "VDFGxz0I7zZQZenYvhUFBXHuHHn2").get();
+  const predictions = await firestore.collection("predictions").get();
 
-  console.log("Found predictions:", predictions.docs[0].data().winners);
-  const winners = predictions.docs[0].data().winners
+  for (const prediction of predictions.docs) {
+    const data = prediction.data()
+    if (data.abandoned) {
+      await firestore.collection("predictions").doc(prediction.id).delete();
+      console.log(`Deleted prediction ${prediction.id} because it was abandoned`);
+    } else {
+      // clear locked and winners
 
-  await firestore.collection("predictions").doc("j4WJaYgK3USSqiqiisoRlVCP1E82").update({
-    winners: winners
-  })
+      console.log(`Cleared locked and winners for prediction ${prediction.id}`);
+    }
+  }
 
 }
 

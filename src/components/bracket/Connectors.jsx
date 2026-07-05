@@ -1,7 +1,7 @@
 import { connectorStroke, connectorWidth } from "../../lib/scoring";
 
 // ----------------------------------------------------------------------------
-// CONNECTORS — pairs of matches merge into the next round.
+// CONNECTORS — pairs of matches merge into the next round, colored by verdict.
 // ----------------------------------------------------------------------------
 export function Connector({ count, side = "left", verdicts, readOnly = false }) {
   const paths = [];
@@ -23,7 +23,7 @@ export function Connector({ count, side = "left", verdicts, readOnly = false }) 
     );
   }
   return (
-    <div className="shrink-0 self-stretch" style={{ width: 28 }}>
+    <div className="bracket-connector">
       <svg width="100%" height="100%" viewBox={`0 0 100 ${count}`} preserveAspectRatio="none" className="block h-full w-full">
         {paths}
       </svg>
@@ -31,29 +31,22 @@ export function Connector({ count, side = "left", verdicts, readOnly = false }) 
   );
 }
 
-/** Semi-final → final (center) + third-place (below) in one symmetric connector. */
-export function SFPodiumConnector({ side = "left", finalVerdict, thirdVerdict, readOnly = false }) {
-  const finalY = 50;
-  const thirdY = 76;
-  const branchX = 42;
-  const finalPath = side === "left" ? `M0,${finalY} H100` : `M100,${finalY} H0`;
-  const thirdPath =
-    side === "left"
-      ? `M${branchX},${finalY} V${thirdY} H100`
-      : `M${100 - branchX},${finalY} V${thirdY} H0`;
-  const strokeProps = (verdict) => ({
-    fill: "none",
-    strokeWidth: connectorWidth(verdict),
-    stroke: connectorStroke(verdict, readOnly),
-    vectorEffect: "non-scaling-stroke",
-    style: { transition: "stroke 0.4s ease, stroke-width 0.4s ease" },
-  });
-
+/** Semi-final → final connector. The final card is centered in the podium (50%),
+ *  so a straight horizontal line lands on it. Third place is connected by its own
+ *  short connector rendered next to the card (see ThirdPlaceConnector). */
+export function SFPodiumConnector({ side = "left", finalVerdict, readOnly = false }) {
+  const finalPath = side === "left" ? "M0,50 H100" : "M100,50 H0";
   return (
-    <div className="bracket-sf-connector shrink-0 self-stretch">
+    <div className="bracket-sf-connector">
       <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-full w-full">
-        <path d={finalPath} {...strokeProps(finalVerdict)} />
-        <path d={thirdPath} {...strokeProps(thirdVerdict)} />
+        <path
+          d={finalPath}
+          fill="none"
+          strokeWidth={connectorWidth(finalVerdict)}
+          stroke={connectorStroke(finalVerdict, readOnly)}
+          vectorEffect="non-scaling-stroke"
+          style={{ transition: "stroke 0.4s ease, stroke-width 0.4s ease" }}
+        />
       </svg>
     </div>
   );

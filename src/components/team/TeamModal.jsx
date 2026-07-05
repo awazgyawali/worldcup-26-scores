@@ -46,7 +46,7 @@ export function JourneyListItem({ entry, selected, onSelect }) {
   );
 }
 
-export function TeamModal({ team, journey, onClose, onOpenMatch }) {
+export function TeamModal({ team, journey, onClose, onOpenMatch, friends = [], numToSlot, selfUid }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function TeamModal({ team, journey, onClose, onOpenMatch }) {
   const selected = journey[selectedIdx] ?? null;
 
   return (
-    <Modal open={!!team} onClose={onClose} maxW="max-w-4xl">
+    <Modal open={!!team} onClose={onClose} maxW="max-w-4xl" sheet>
       <div className="journey-header">
         <img src={flagSrc(team.iso2)} srcSet={flagSrcSet(team.iso2)} alt="" className="journey-header__flag" />
         <div className="journey-header__body">
@@ -112,7 +112,14 @@ export function TeamModal({ team, journey, onClose, onOpenMatch }) {
 
           <section className="journey-detail-pane nice-scroll" aria-label="Match detail">
             {selected ? (
-              <JourneyMatchDetail entry={selected} team={team} onOpenMatch={onOpenMatch} />
+              <JourneyMatchDetail
+                entry={selected}
+                team={team}
+                onOpenMatch={onOpenMatch}
+                friends={friends}
+                numToSlot={numToSlot}
+                selfUid={selfUid}
+              />
             ) : (
               <p className="journey-empty">Select a fixture to view details.</p>
             )}

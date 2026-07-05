@@ -4,7 +4,7 @@ import { bracketHighlightFor } from "./Connectors";
 import { PointsPill } from "./PointsPill";
 import { flagSrc, flagSrcSet } from "../../lib/format";
 import { getThirdPlaceTeams, getMatchTeams } from "../../lib/bracket";
-import { key, FINAL_ROUND } from "../../lib/rounds";
+import { key, FINAL_ROUND, THIRD_PLACE } from "../../lib/rounds";
 
 // ----------------------------------------------------------------------------
 // TROPHY / CHAMPION / PODIUM
@@ -67,7 +67,7 @@ export function TrophyMark({ champion, isActual }) {
   );
 }
 
-export function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, guidanceKey, readOnly = false, revealGrades = false }) {
+export function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, onFlagClick, onOpenMatch, liveKey, nextKey, guidanceKey, readOnly = false, revealGrades = false, compareVerdict = null, comparePickId = null, compareName = null, compact = false }) {
   const rk = "third-0";
   const match = slotMatches[rk];
   // Real fixture teams beat the predicted ones once semis are actually played.
@@ -76,10 +76,8 @@ export function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, on
   const b = match?.team2 || predicted[1];
 
   return (
-    <div className="flex w-full flex-col items-center gap-1">
-      <span className="text-[8px] font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">
-        🥉 Third place
-      </span>
+    <div className="podium-third-card w-full">
+      <span className="podium-third-card__label">{THIRD_PLACE.label} · {THIRD_PLACE.points} pts</span>
       <MatchCard
         slotKey={rk}
         roundIdx="third"
@@ -94,13 +92,18 @@ export function ThirdPlaceCard({ winners, teams, onPick, actual, slotMatches, on
         onOpenMatch={onOpenMatch}
         readOnly={readOnly}
         revealGrades={revealGrades}
+        compareVerdict={compareVerdict}
+        comparePickId={comparePickId}
+        compareName={compareName}
+        compact={compact}
+        showRound={compact}
       />
     </div>
   );
 }
 
 /** Center column: winner block above, final at vertical center, third place below. */
-export function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, showPoints = true }) {
+export function PodiumColumn({ winners, teams, onPick, actual, champion, actualChampion, slotMatches, liveKey, nextKey, guidanceKey, onFlagClick, onOpenMatch, readOnly = false, revealGrades = false, stats, showPoints = true, compareFriend = null, compareMap = null, compact = false }) {
   const rk = key("final", 0);
   return (
     <div className="podium-column">
@@ -108,13 +111,13 @@ export function PodiumColumn({ winners, teams, onPick, actual, champion, actualC
         <div className="points-podium">
           <PointsPill stats={stats} showPoints={showPoints} />
         </div>
-        <TrophyMark champion={actualChampion || champion} isActual={!!actualChampion} />
-        <div className="rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-3 py-0.5 text-[8.5px] font-black uppercase tracking-[0.22em] text-[#1a1305] shadow-[0_0_18px_-4px_rgba(245,205,110,0.5)]">
-          Final
-        </div>
       </div>
 
-      <div className="podium-column__final w-full max-w-[var(--match-card-w)] lg:max-w-none">
+      <div className="podium-final-card w-full">
+        <div className="podium-final-card__trophy">
+          <TrophyMark champion={actualChampion || champion} isActual={!!actualChampion} />
+        </div>
+
         <MatchCard
           slotKey={rk}
           roundIdx={FINAL_ROUND}
@@ -129,10 +132,31 @@ export function PodiumColumn({ winners, teams, onPick, actual, champion, actualC
           onOpenMatch={onOpenMatch}
           readOnly={readOnly}
           revealGrades={revealGrades}
+          compareVerdict={compareMap?.[rk] ?? null}
+          comparePickId={compareFriend?.winners?.[rk] ?? null}
+          compareName={compareFriend?.name ?? null}
+          compact={compact}
+          showRound={compact}
         />
+
+        {compareFriend && (() => {
+          const rivalChampionId = compareFriend.winners[key("final", 0)];
+          const rivalChampion = rivalChampionId ? teams.find((t) => t.id === rivalChampionId) : null;
+          if (!rivalChampion) return null;
+          const differs = !champion || champion.id !== rivalChampion.id;
+          return (
+            <p className="podium-final-card__rival">
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: differs ? "var(--pitch-glow)" : "var(--agree)" }}
+              />
+              {compareFriend.name}&apos;s champion is <span className="font-bold text-[var(--text-primary)]">{rivalChampion.code}</span>
+            </p>
+          );
+        })()}
       </div>
 
-      <div className="podium-column__below w-full max-w-[var(--match-card-w)] lg:max-w-none">
+      <div className="podium-column__below w-full">
         <ThirdPlaceCard
           winners={winners}
           teams={teams}
@@ -146,6 +170,10 @@ export function PodiumColumn({ winners, teams, onPick, actual, champion, actualC
           guidanceKey={guidanceKey}
           readOnly={readOnly}
           revealGrades={revealGrades}
+          compareVerdict={compareMap?.["third-0"] ?? null}
+          comparePickId={compareFriend?.winners?.["third-0"] ?? null}
+          compareName={compareFriend?.name ?? null}
+          compact={compact}
         />
       </div>
     </div>

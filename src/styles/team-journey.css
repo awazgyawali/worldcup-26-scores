@@ -25,9 +25,10 @@
 .journey-header__title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.65rem;
-  line-height: 1;
-  letter-spacing: 0.04em;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
   color: var(--text-primary);
 }
 
@@ -52,7 +53,7 @@
 }
 
 .journey-header__w {
-  color: var(--pitch-glow);
+  color: var(--agree);
 }
 
 .journey-header__l {
@@ -124,7 +125,7 @@
 }
 
 .journey-item--win {
-  border-left-color: color-mix(in oklch, var(--pitch-glow) 38%, var(--border));
+  border-left-color: color-mix(in oklch, var(--agree) 38%, var(--border));
 }
 
 .journey-item--loss {
@@ -149,9 +150,9 @@
 }
 
 .journey-item--selected {
-  border-color: color-mix(in oklch, var(--gold) 42%, transparent);
-  background: color-mix(in oklch, var(--gold) 8%, var(--bg-surface));
-  box-shadow: inset 2px 0 0 var(--gold-bright);
+  border-color: color-mix(in oklch, var(--pitch) 42%, transparent);
+  background: color-mix(in oklch, var(--pitch) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--pitch);
 }
 
 .journey-item--selected.journey-item--win,
@@ -159,7 +160,7 @@
 .journey-item--selected.journey-item--draw,
 .journey-item--selected.journey-item--live,
 .journey-item--selected.journey-item--upcoming {
-  background: color-mix(in oklch, var(--gold) 8%, var(--bg-surface));
+  background: color-mix(in oklch, var(--pitch) 12%, transparent);
 }
 
 .journey-item__top {
@@ -410,7 +411,7 @@
 }
 
 .journey-master .journey-result-pill--win {
-  color: color-mix(in oklch, var(--pitch-glow) 55%, var(--text-muted));
+  color: color-mix(in oklch, var(--agree) 55%, var(--text-muted));
 }
 
 .journey-master .journey-result-pill--loss {
@@ -431,8 +432,8 @@
 }
 
 .journey-result-pill--win {
-  background: color-mix(in oklch, var(--pitch-glow) 14%, transparent);
-  color: var(--pitch-glow);
+  background: color-mix(in oklch, var(--agree) 14%, transparent);
+  color: var(--agree);
 }
 
 .journey-result-pill--loss {
@@ -462,11 +463,11 @@
 
 .journey-detail__timeline-wrap {
   border-top: 1px solid var(--border);
-  padding-top: 0.85rem;
+  padding-top: 0.6rem;
 }
 
 .journey-detail__timeline-title {
-  margin: 0 0 0.65rem;
+  margin: 0 0 0.4rem;
   font-size: 0.5625rem;
   font-weight: 900;
   letter-spacing: 0.14em;
@@ -477,7 +478,7 @@
 .journey-timeline {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.5rem;
 }
 
 .journey-timeline__none {
@@ -490,13 +491,13 @@
 .journey-timeline__section {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.3rem;
 }
 
 .journey-timeline__header {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.4rem;
 }
 
 .journey-timeline__header-line {
@@ -516,13 +517,13 @@
 
 .journey-timeline__track {
   position: relative;
-  padding: 0.25rem 0 0.15rem;
+  padding: 0.15rem 0 0.1rem;
 }
 
 .journey-timeline__spine {
   position: absolute;
-  top: 0.15rem;
-  bottom: 0.35rem;
+  top: 0.1rem;
+  bottom: 0.25rem;
   left: 50%;
   width: 2px;
   transform: translateX(-50%);
@@ -535,7 +536,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.3rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -579,12 +580,12 @@
 .journey-timeline__minute {
   position: relative;
   z-index: 2;
-  min-width: 2.15rem;
+  min-width: 1.85rem;
   border-radius: 9999px;
   border: 1px solid var(--border-strong);
   background: var(--bg-surface);
-  padding: 0.12rem 0.45rem;
-  font-size: 0.625rem;
+  padding: 0.08rem 0.35rem;
+  font-size: 0.575rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
@@ -604,7 +605,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -629,8 +630,8 @@
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 0.45rem;
-  margin-top: 0.55rem;
-  padding-top: 0.45rem;
+  margin-top: 0.35rem;
+  padding-top: 0.3rem;
   border-top: 1px dashed color-mix(in oklch, var(--gold) 25%, transparent);
 }
 
@@ -678,6 +679,173 @@
   color: var(--text-muted);
 }
 
+.journey-side-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.journey-side-panel {
+  background: var(--bg-elevated);
+  border-radius: 0.7rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.journey-side-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.journey-side-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.journey-side-panel__title {
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.journey-side-panel__head .journey-side-panel__title {
+  margin-bottom: 0;
+}
+
+.journey-side-panel__hint {
+  font-size: 0.575rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.journey-side-panel__body {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.journey-side-panel__pts {
+  color: var(--agree);
+  font-weight: 700;
+}
+
+/* league calls — ranked rows */
+.journey-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.journey-call {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto 2.2rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.55rem;
+}
+
+.journey-call--you {
+  background: color-mix(in oklch, var(--pitch) 10%, transparent);
+}
+
+.journey-call--exact {
+  background: color-mix(in oklch, var(--agree) 10%, transparent);
+}
+
+.journey-call__avatar {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.5rem;
+  font-weight: 800;
+}
+
+.journey-call__avatar--you {
+  background: var(--pitch);
+  color: #fff;
+  font-size: 0.48rem;
+}
+
+.journey-call__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.journey-call--you .journey-call__name {
+  color: var(--pitch-glow);
+  font-weight: 700;
+}
+
+.journey-call__badge {
+  flex-shrink: 0;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.35rem;
+  background: color-mix(in oklch, var(--agree) 18%, transparent);
+  color: var(--agree);
+  font-size: 0.475rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.journey-call__score {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.journey-call__pts {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.journey-call__pts--hit {
+  color: var(--agree);
+}
+
+/* who rides — trophy pills */
+.journey-riders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.journey-rider-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.journey-rider-pill .mdi {
+  color: var(--gold-bright);
+  font-size: 0.75rem;
+}
+
 .journey-detail__link {
   border: none;
   background: none;
@@ -700,33 +868,151 @@
   color: var(--text-muted);
 }
 
+/* Mobile: fixtures dock as a horizontal scroller pinned to the bottom, match
+   detail fills the space above it — same concept as the matchday page. */
 @media (max-width: 640px) {
   .journey-shell {
     flex-direction: column;
   }
 
+  .journey-detail-pane {
+    order: 1;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
   .journey-master {
+    order: 2;
     width: 100%;
-    max-height: 11.5rem;
+    max-height: none;
+    flex-shrink: 0;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 20px -12px rgba(0, 0, 0, 0.45);
+  }
+
+  .journey-master__label {
+    padding: 0.5rem 0.75rem 0.4rem;
+  }
+
+  .journey-master__list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 0.5rem;
+    padding: 0 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
+    scroll-snap-type: x mandatory;
+  }
+
+  .journey-master__list::-webkit-scrollbar { height: 6px; }
+  .journey-master__list::-webkit-scrollbar-track { background: transparent; }
+  .journey-master__list::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 99px;
+  }
+
+  .journey-master__list li {
+    flex-shrink: 0;
+  }
+
+  .journey-item {
+    width: 11.5rem;
+    scroll-snap-align: start;
+  }
+
+  /* Compact bottom sheet: tighter header/meta/scoreboard, and the two teams
+     stay side-by-side (flag + name inline) instead of stacking. */
+  .journey-header {
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+  }
+
+  .journey-header__flag {
+    height: 2.1rem;
+    width: 2.9rem;
+  }
+
+  .journey-header__title {
+    font-size: 1.05rem;
+  }
+
+  .journey-header__close {
+    height: 1.7rem;
+    width: 1.7rem;
+  }
+
+  .journey-detail {
+    padding: 0.7rem 0.85rem 0.85rem;
+  }
+
+  .journey-detail__meta {
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
   }
 
   .journey-detail__scoreboard {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
+    gap: 0.35rem;
   }
 
-  .journey-detail__team--us,
-  .journey-detail__team--them {
+  .journey-detail__team {
+    gap: 0.4rem;
+  }
+
+  .journey-detail__team--us {
     flex-direction: row;
     align-items: center;
     text-align: left;
   }
 
+  .journey-detail__team--them {
+    flex-direction: row-reverse;
+    align-items: center;
+    text-align: right;
+  }
+
+  .journey-detail__flag {
+    height: 1.55rem;
+    width: 2.2rem;
+  }
+
+  .journey-detail__team-name {
+    font-size: 0.7rem;
+    line-height: 1.1;
+  }
+
   .journey-detail__center {
-    order: -1;
     padding-top: 0;
+    gap: 0.15rem;
+  }
+
+  .journey-detail__score {
+    font-size: 1.5rem;
+  }
+
+  .journey-detail__vs {
+    font-size: 1.1rem;
+  }
+
+  .journey-detail__result {
+    margin: 0.5rem 0 0.6rem;
+  }
+
+  .journey-detail__timeline-wrap {
+    padding-top: 0.5rem;
+  }
+
+  .journey-side-panels {
+    gap: 0.45rem;
+    margin-top: 0.6rem;
+  }
+
+  .journey-side-panel {
+    padding: 0.6rem 0.65rem;
+  }
+
+  .journey-detail__footer {
+    margin-top: 0.6rem;
+    padding-top: 0.55rem;
   }
 }
 

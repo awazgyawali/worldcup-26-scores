@@ -8,6 +8,8 @@ export const fmtTimeOnly = (d) => d.toLocaleTimeString(undefined, { hour: "numer
 
 export const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
+export const fmtDayShort = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+
 export const fmtMatchTime = (d) =>
   d.toDateString() === new Date().toDateString() ? fmtTimeOnly(d) : fmtKickoff(d);
 

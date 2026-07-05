@@ -27,6 +27,8 @@ function mapPredictionDoc(id, data) {
     abandoned: !!data.abandoned,
     updatedAt: data.updatedAt?.toMillis?.() ?? 0,
     authProvider: data.authProvider || "anonymous",
+    // Manually set to true in Firestore when a player pays into the pot.
+    paid: !!data.paid,
   };
 }
 
