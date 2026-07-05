@@ -23,7 +23,7 @@ export const googleProvider = new GoogleAuthProvider();
 
 /**
  * Firebase Console setup for production (e.g. Cloudflare Workers):
- * 1. Authentication → Sign-in method → enable Anonymous, Google, and Email/Password
+ * 1. Authentication → Sign-in method → enable Google and Email/Password
  * 2. Authentication → Settings → Authorized domains → add your host
  *    (e.g. worldcup-26-scores.brainants.workers.dev)
  *
@@ -35,8 +35,4 @@ export const googleProvider = new GoogleAuthProvider();
  *     allow update: if request.auth != null && request.auth.uid == userId;
  *     allow delete: if false;
  *   }
- *
- * Migration fields (anonymous → existing Google/email account):
- *   abandoned / abandonedAt on the old anonymous doc (locked copy, safe to delete later)
- *   migratedFrom / migratedAt on the new account doc
  */

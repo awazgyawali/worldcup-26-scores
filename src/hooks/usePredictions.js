@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import {
-  EmailAuthProvider,
-  GoogleAuthProvider,
-  linkWithCredential,
-  linkWithPopup,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendPasswordResetEmail,
-  signInAnonymously,
-  signInWithCredential,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { auth, db, googleProvider, PREDICTIONS_COLLECTION } from "../firebase";
@@ -26,16 +22,16 @@ function mapPredictionDoc(id, data) {
     lockedAt: data.lockedAt?.toMillis?.() ?? null,
     abandoned: !!data.abandoned,
     updatedAt: data.updatedAt?.toMillis?.() ?? 0,
-    authProvider: data.authProvider || "anonymous",
+    authProvider: data.authProvider || "email",
     // Manually set to true in Firestore when a player pays into the pot.
     paid: !!data.paid,
   };
 }
 
-// "google" | "email" | "anonymous" — persisted on the doc so the friends list can
+// "google" | "email" — persisted on the doc so the friends list can
 // show how someone signed in without a second read against Firebase Auth.
 function getAuthProviderTag(user) {
-  if (!user || user.isAnonymous) return "anonymous";
+  if (!user) return null;
   const providerId = user.providerData?.[0]?.providerId;
   if (providerId === "google.com") return "google";
   if (providerId === "password") return "email";
@@ -60,7 +56,7 @@ function formatSyncError(err, context = "save") {
     return "";
   }
   if (context === "auth") {
-    return `Sign-in failed. Enable Anonymous and Google auth in Firebase and add "${host}" to Authorized domains.`;
+    return `Sign-in failed. Enable Google and Email/Password auth in Firebase and add "${host}" to Authorized domains.`;
   }
   return message || "Failed to sync predictions.";
 }
@@ -96,56 +92,11 @@ function mergeWinners(existing = {}, incoming = {}) {
   return { ...existing, ...incoming };
 }
 
-async function abandonAnonymousProfile(anonymousUid, { name, winners }) {
-  await setDoc(
-    doc(db, PREDICTIONS_COLLECTION, anonymousUid),
-    {
-      uid: anonymousUid,
-      name: name || "Anonymous",
-      winners,
-      locked: true,
-      abandoned: true,
-      abandonedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
-async function migratePredictionsToGoogleAccount(
-  googleUid,
-  { anonymousUid, localWinners, localName, displayName, anonymousWasLocked, authProvider }
-) {
-  const googleDocSnap = await getDoc(doc(db, PREDICTIONS_COLLECTION, googleUid));
-  const googleData = googleDocSnap.exists() ? googleDocSnap.data() : {};
-  const mergedWinners = mergeWinners(googleData.winners, localWinners);
-  const mergedName = googleData.name?.trim() || displayName?.trim() || localName?.trim() || "";
-  const mergedLocked = !!googleData.locked || anonymousWasLocked;
-
-  await setDoc(
-    doc(db, PREDICTIONS_COLLECTION, googleUid),
-    {
-      uid: googleUid,
-      name: mergedName,
-      winners: mergedWinners,
-      locked: mergedLocked,
-      authProvider: authProvider || "email",
-      ...(mergedLocked && !googleData.locked ? { lockedAt: serverTimestamp() } : {}),
-      migratedFrom: anonymousUid,
-      migratedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  return { mergedWinners, mergedName, wasLocked: mergedLocked };
-}
-
 export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}) {
   const [uid, setUid] = useState(null);
   const [name, setName] = useState("");
   const [userEmail, setUserEmail] = useState(null);
-  const [authProvider, setAuthProvider] = useState("anonymous");
+  const [authProvider, setAuthProvider] = useState(null);
   const [needsName, setNeedsName] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [authReady, setAuthReady] = useState(false);
@@ -158,7 +109,6 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const [friends, setFriends] = useState([]);
   const [friendsReady, setFriendsReady] = useState(false);
   const [viewingFriendUid, setViewingFriendUid] = useState(null);
-  const [isAnonymous, setIsAnonymous] = useState(true);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   const saveTimerRef = useRef(null);
@@ -174,6 +124,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const nameRef = useRef(name);
   const viewingFriendUidRef = useRef(viewingFriendUid);
   const onRemoteWinnersRef = useRef(onRemoteWinners);
+  const prevProfileUidRef = useRef(null);
 
   winnersRef.current = winners;
   uidRef.current = uid;
@@ -268,9 +219,32 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     return unsub;
   }, [enabled]);
 
+  // Don't block the shell forever if Firestore is slow or offline on first visit.
+  useEffect(() => {
+    if (!enabled || friendsReady) return undefined;
+    const timer = setTimeout(() => {
+      console.warn("[WC26] Friends snapshot timed out — continuing");
+      setFriendsReady(true);
+      if (uidRef.current) setProfileLoaded(true);
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [enabled, friendsReady]);
+
   // Resolve the signed-in user's profile once auth uid and the first Firestore snapshot are in.
   useEffect(() => {
-    if (!enabled || !uid || !friendsReady) return;
+    if (!enabled || !friendsReady) return;
+
+    if (!uid) {
+      setProfileLoaded(false);
+      prevProfileUidRef.current = null;
+      return;
+    }
+
+    if (prevProfileUidRef.current !== uid) {
+      loadedRemoteRef.current = false;
+      lastPersistedJsonRef.current = null;
+      prevProfileUidRef.current = uid;
+    }
 
     setProfileLoaded(true);
 
@@ -358,15 +332,13 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     const trimmed = rawName.trim();
     if (!trimmed) return false;
 
-    try {
-      let userId = uidRef.current;
-      if (!userId) {
-        const credential = await signInAnonymously(auth);
-        userId = credential.user.uid;
-        setUid(userId);
-        setAuthError(null);
-      }
+    const userId = uidRef.current;
+    if (!userId) {
+      setAuthError("Sign in with Google or email before saving your name.");
+      return false;
+    }
 
+    try {
       setName(trimmed);
       setNeedsName(false);
       loadedRemoteRef.current = true;
@@ -376,7 +348,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       if (!ok) return false;
       return true;
     } catch (err) {
-      console.error("[WC26] Failed to sign in or save profile:", err);
+      console.error("[WC26] Failed to save profile:", err);
       setAuthError(formatSyncError(err, "auth"));
       throw err;
     }
@@ -386,77 +358,11 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     setLinkingGoogle(true);
     setAuthError(null);
     try {
-      let user = auth.currentUser;
-      if (!user) {
-        const credential = await signInAnonymously(auth);
-        user = credential.user;
-        setUid(user.uid);
-      }
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
 
-      const localWinners = { ...winnersRef.current };
-      const localName = nameRef.current?.trim() || "";
-
-      if (user.isAnonymous) {
-        const anonymousUid = user.uid;
-
-        try {
-          const result = await linkWithPopup(user, googleProvider);
-          user = result.user;
-        } catch (linkErr) {
-          if (linkErr?.code !== "auth/credential-already-in-use") throw linkErr;
-
-          const pendingCred = GoogleAuthProvider.credentialFromError(linkErr);
-          if (!pendingCred) throw linkErr;
-
-          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-
-          await abandonAnonymousProfile(anonymousUid, { name: localName, winners: localWinners });
-
-          const signInResult = await signInWithCredential(auth, pendingCred);
-          user = signInResult.user;
-
-          const { mergedWinners, mergedName, wasLocked } = await migratePredictionsToGoogleAccount(user.uid, {
-            anonymousUid,
-            localWinners,
-            localName,
-            displayName: user.displayName,
-            anonymousWasLocked: lockedRef.current,
-            authProvider: getAuthProviderTag(user),
-          });
-
-          setUid(user.uid);
-          setIsAnonymous(false);
-          setUserEmail(user.email ?? null);
-          setAuthProvider(getAuthProviderTag(user));
-          setName(mergedName);
-          setNeedsName(!mergedName);
-          lockedRef.current = wasLocked;
-          setLocked(wasLocked);
-          loadedRemoteRef.current = true;
-          lastPersistedJsonRef.current = winnersJson(mergedWinners);
-          wasLockedRef.current = wasLocked;
-
-          if (Object.keys(mergedWinners).length > 0) {
-            onRemoteWinnersRef.current?.(mergedWinners, { force: true });
-          }
-
-          if (submitNameAfter && !mergedName) {
-            const displayName = user.displayName?.trim() || "";
-            if (displayName) {
-              const ok = await submitName(displayName);
-              return ok ? { success: true, merged: true } : { success: false };
-            }
-            return { needsManualName: true };
-          }
-
-          return { success: true, merged: true };
-        }
-      }
-
-      // user.isAnonymous is stale right after linkWithPopup (stays true until
-      // reload/refresh) — a linked user has providerData, an anonymous one doesn't
-      setIsAnonymous(user.isAnonymous && user.providerData.length === 0);
-      setUserEmail(user.email ?? user.providerData[0]?.email ?? null);
+      setUid(user.uid);
+      setUserEmail(user.email ?? null);
       setAuthProvider(getAuthProviderTag(user));
 
       if (submitNameAfter) {
@@ -485,23 +391,14 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const signUpWithEmail = useCallback(async (email, password, displayName) => {
     setAuthError(null);
     try {
-      let user = auth.currentUser;
-      if (!user) {
-        const credential = await signInAnonymously(auth);
-        user = credential.user;
-        setUid(user.uid);
-      }
-
-      const localName = displayName?.trim() || nameRef.current?.trim() || "";
-      const emailCredential = EmailAuthProvider.credential(email, password);
-      const linkResult = await linkWithCredential(user, emailCredential);
-      user = linkResult.user;
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      const user = result.user;
 
       setUid(user.uid);
-      setIsAnonymous(false);
       setUserEmail(user.email ?? null);
       setAuthProvider(getAuthProviderTag(user));
 
+      const localName = displayName?.trim() || "";
       if (localName) {
         const ok = await submitName(localName);
         return ok ? { success: true } : { success: false };
@@ -518,50 +415,10 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
   const signInWithEmail = useCallback(async (email, password) => {
     setAuthError(null);
     try {
-      const wasAnonymous = !!auth.currentUser?.isAnonymous;
-      const anonymousUid = auth.currentUser?.uid ?? null;
-      const localWinners = { ...winnersRef.current };
-      const localName = nameRef.current?.trim() || "";
-      const anonymousWasLocked = lockedRef.current;
-      const hadLocalProgress = Object.keys(localWinners).length > 0 || !!localName;
-
       const result = await signInWithEmailAndPassword(auth, email, password);
       const user = result.user;
 
-      if (wasAnonymous && anonymousUid && anonymousUid !== user.uid && hadLocalProgress) {
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-
-        await abandonAnonymousProfile(anonymousUid, { name: localName, winners: localWinners });
-        const { mergedWinners, mergedName, wasLocked } = await migratePredictionsToGoogleAccount(user.uid, {
-          anonymousUid,
-          localWinners,
-          localName,
-          displayName: user.displayName,
-          anonymousWasLocked,
-          authProvider: getAuthProviderTag(user),
-        });
-
-        setUid(user.uid);
-        setIsAnonymous(false);
-        setUserEmail(user.email ?? null);
-        setAuthProvider(getAuthProviderTag(user));
-        setName(mergedName);
-        setNeedsName(!mergedName);
-        lockedRef.current = wasLocked;
-        setLocked(wasLocked);
-        loadedRemoteRef.current = true;
-        lastPersistedJsonRef.current = winnersJson(mergedWinners);
-        wasLockedRef.current = wasLocked;
-
-        if (Object.keys(mergedWinners).length > 0) {
-          onRemoteWinnersRef.current?.(mergedWinners, { force: true });
-        }
-
-        return { success: true, merged: true };
-      }
-
       setUid(user.uid);
-      setIsAnonymous(user.isAnonymous);
       setUserEmail(user.email ?? null);
       setAuthProvider(getAuthProviderTag(user));
       return { success: true };
@@ -588,10 +445,22 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       setViewingFriendUid(null);
       wasLockedRef.current = false;
+      lockedRef.current = false;
+      lockingRef.current = false;
+      setLocked(false);
+      setLockedAt(null);
+      setLocking(false);
+      setName("");
+      setNeedsName(true);
+      setUserEmail(null);
+      setAuthProvider(null);
+      setProfileLoaded(false);
+      prevProfileUidRef.current = null;
+      loadedRemoteRef.current = false;
+      lastPersistedJsonRef.current = null;
+      pendingWriteRef.current = null;
       onRemoteWinnersRef.current?.({}, { force: true });
-      // uid/isAnonymous/email/needsName are re-derived by the onAuthStateChanged
-      // listener below (it re-authenticates anonymously once signed out) — setting
-      // them here too would race with that async flow and can leave stale state.
+      setUid(null);
       await firebaseSignOut(auth);
       return { success: true };
     } catch (err) {
@@ -609,10 +478,9 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       return;
     }
 
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUid(user.uid);
-        setIsAnonymous(user.isAnonymous);
         setUserEmail(user.email ?? null);
         setAuthProvider(getAuthProviderTag(user));
         setAuthError(null);
@@ -620,19 +488,13 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         return;
       }
 
-      try {
-        const credential = await signInAnonymously(auth);
-        setUid(credential.user.uid);
-        setIsAnonymous(true);
-        setUserEmail(null);
-        setAuthProvider("anonymous");
-        setAuthError(null);
-      } catch (err) {
-        console.error("[WC26] Anonymous sign-in failed — enable it in Firebase Console → Authentication:", err);
-        setAuthError(formatSyncError(err, "auth"));
-      } finally {
-        setAuthReady(true);
-      }
+      setUid(null);
+      setUserEmail(null);
+      setAuthProvider(null);
+      setNeedsName(true);
+      setProfileLoaded(false);
+      prevProfileUidRef.current = null;
+      setAuthReady(true);
     });
 
     return unsub;
@@ -693,12 +555,6 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     setAuthError(null);
   }, []);
 
-  useEffect(() => {
-    setProfileLoaded(false);
-    loadedRemoteRef.current = false;
-    lastPersistedJsonRef.current = null;
-  }, [uid]);
-
   return {
     uid,
     name,
@@ -718,7 +574,6 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     signInWithEmail,
     resetPassword,
     signOutUser,
-    isAnonymous,
     linkingGoogle,
     locked,
     lockedAt,

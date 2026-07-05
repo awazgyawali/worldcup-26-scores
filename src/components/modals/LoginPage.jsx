@@ -7,8 +7,23 @@ function fmtPts(n) {
   return n === 1 ? "1 pt" : `${n} pts`;
 }
 
-function BrandPanel({ onShowRules, scoringRows }) {
+const SCORE_TILES = [
+  {
+    key: "oneside",
+    label: "One side",
+    desc: "Either team's score",
+    points: SCORE_ONE_SIDE_POINTS,
+  },
+  {
+    key: "exact",
+    label: "Both sides",
+    desc: "Exact final score",
+    points: SCORE_EXACT_POINTS,
+    featured: true,
+  },
+];
 
+function BrandPanel({ onShowRules, scoringRows, scoreTiles = SCORE_TILES }) {
   return (
     <div className="login-brand">
       <div className="flex items-center gap-3">
@@ -27,7 +42,7 @@ function BrandPanel({ onShowRules, scoringRows }) {
       </div>
 
       <div className="login-brand__scoring">
-        <p className="login-brand__scoring-title">How points work</p>
+        <p className="login-brand__scoring-title">Bracket picks</p>
         <div className="login-brand__scoring-grid">
           {scoringRows.map((row) => (
             <div
@@ -36,6 +51,20 @@ function BrandPanel({ onShowRules, scoringRows }) {
             >
               <span>{row.label}</span>
               <span className="login-brand__scoring-pts">{row.points}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="login-brand__scoring-title login-brand__scoring-title--score">Score calls · per match</p>
+        <div className="login-brand__score-tiles">
+          {scoreTiles.map((tile) => (
+            <div
+              key={tile.key}
+              className={["login-brand__score-tile", tile.featured && "login-brand__score-tile--featured"].filter(Boolean).join(" ")}
+            >
+              <span className="login-brand__score-tile-pts">+{tile.points}</span>
+              <span className="login-brand__score-tile-label">{tile.label}</span>
+              <span className="login-brand__score-tile-desc">{tile.desc}</span>
             </div>
           ))}
         </div>
@@ -73,15 +102,13 @@ export function LoginPage({
     ...ROUNDS.filter((r) => r.key !== "final").map((r) => ({ label: `${r.label} pick`, points: r.points })),
     { label: THIRD_PLACE.label, points: THIRD_PLACE.points },
     { label: "Champion", points: ROUNDS.find((r) => r.key === "final").points, highlight: true },
-    { label: "Group-stage pick", points: 1 },
-    { label: "Score call: side / exact", points: `${SCORE_ONE_SIDE_POINTS} / ${SCORE_EXACT_POINTS}`, highlight: true },
   ];
 
   const mobilePoints = [
     { label: "Round of 16", val: ROUNDS.find((r) => r.key === "r16")?.points ?? 10 },
-    { label: "Quarter-finals", val: ROUNDS.find((r) => r.key === "qf")?.points ?? 15 },
     { label: "Champion", val: ROUNDS.find((r) => r.key === "final")?.points ?? 50 },
-    { label: "Exact score", val: SCORE_EXACT_POINTS },
+    { label: "One side", val: SCORE_ONE_SIDE_POINTS },
+    { label: "Both sides", val: SCORE_EXACT_POINTS },
   ];
 
   const resetMessages = () => {
@@ -217,7 +244,7 @@ export function LoginPage({
               <div className="login-auth__intro">
                 <h2 className="text-[1.625rem] font-extrabold tracking-tight text-[var(--text-primary)]">Get in the game</h2>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-                  Real account required — anonymous brackets don&apos;t make the leaderboard.
+                  Sign in with Google or email to save your bracket and join the leaderboard.
                 </p>
               </div>
               {mode !== "name" && (
@@ -463,19 +490,29 @@ function RulesPanel({ onBack }) {
           ))}
         </div>
 
-        <div className="rounded-lg border border-[var(--gold)]/30 bg-[var(--gold)]/10 p-3">
-          <p className="text-xs font-bold text-[var(--gold-bright)]">SCORE PREDICTIONS (real matches)</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">
-            On actual fixtures in the bottom bar — separate from bracket picks:<br />
-            One side correct = <span className="font-bold text-[var(--gold-bright)]">{fmtPts(SCORE_ONE_SIDE_POINTS)}</span><br />
-            Exact score (both sides) = <span className="font-bold text-[var(--gold-bright)]">{fmtPts(SCORE_EXACT_POINTS)}</span>
-          </p>
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-[var(--text-muted)]">Score calls · per match</p>
+        <div className="grid grid-cols-2 gap-2">
+          {SCORE_TILES.map((tile) => (
+            <div
+              key={tile.key}
+              className={[
+                "flex flex-col gap-0.5 rounded-lg border p-3",
+                tile.featured
+                  ? "border-[var(--gold)]/35 bg-[var(--gold)]/10"
+                  : "border-[var(--border)] bg-[var(--bg-elevated)]",
+              ].join(" ")}
+            >
+              <span className={["font-display text-2xl leading-none tracking-wide", tile.featured ? "text-[var(--gold-bright)]" : "text-[var(--pitch-glow)]"].join(" ")}>
+                +{tile.points}
+              </span>
+              <span className="text-xs font-bold text-[var(--text-primary)]">{tile.label}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{tile.desc}</span>
+            </div>
+          ))}
         </div>
-
-        <div className="rounded bg-[var(--bg-elevated)] p-2 text-xs">
-          <span className="text-[var(--text-muted)]">Group stage (rail)</span>
-          <span className="float-right font-bold text-[var(--pitch-glow)]">1 pt per correct</span>
-        </div>
+        <p className="text-[10px] text-[var(--text-muted)]">
+          Call 90-min scores on real fixtures — separate from bracket picks.
+        </p>
       </div>
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-mid)]/30 p-3">
@@ -483,7 +520,6 @@ function RulesPanel({ onBack }) {
         <ul className="mt-1 space-y-1 text-xs text-[var(--text-secondary)]">
           <li>• Score predictions work until kickoff (lock doesn&apos;t matter)</li>
           <li>• Score points are based on the real result, not bracket picks</li>
-          <li>• Group games in bottom bar = 1 point per correct winner pick</li>
         </ul>
       </div>
 

@@ -4,7 +4,7 @@ import { isMatchScorable, getMatchTeams, getThirdPlaceTeams } from "./bracket";
 // ----------------------------------------------------------------------------
 // PREDICTION LOGIC
 // ----------------------------------------------------------------------------
-// Note: All predictions are saved to Firebase only (anonymous login mandatory)
+// Note: All predictions are saved to Firebase (Google or email sign-in required)
 // Local storage persistence has been removed
 export const SCORE_SUFFIX = "-score";
 

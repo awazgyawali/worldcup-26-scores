@@ -315,6 +315,58 @@ body {
   font-weight: 800;
 }
 
+.login-brand__scoring-title--score {
+  margin-top: 1.25rem;
+}
+
+.login-brand__score-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  max-width: 26rem;
+}
+
+.login-brand__score-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.login-brand__score-tile--featured {
+  background: linear-gradient(145deg, rgba(212, 168, 67, 0.14), rgba(212, 168, 67, 0.05));
+  border-color: rgba(212, 168, 67, 0.35);
+}
+
+.login-brand__score-tile-pts {
+  font-family: var(--font-display, inherit);
+  font-size: 1.625rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--pitch-glow);
+}
+
+.login-brand__score-tile--featured .login-brand__score-tile-pts {
+  color: var(--gold-bright, #e8c56a);
+}
+
+.login-brand__score-tile-label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.login-brand__score-tile-desc {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.3;
+}
+
 .login-brand__rules {
   margin-top: auto;
   padding-top: 1.5rem;

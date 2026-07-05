@@ -104,7 +104,6 @@ export default function App() {
     signInWithEmail,
     resetPassword,
     signOutUser,
-    isAnonymous,
     linkingGoogle,
     locked,
     lockedAt,
@@ -495,18 +494,16 @@ export default function App() {
     compareMap: isViewingSelf ? compareMap : null,
   };
   const showBracket = teams.length === 32;
-  // Google/email sign-in is mandatory — anonymous sessions (including pre-existing
-  // ones from before this requirement) are routed back through LoginPage. Linking
-  // preserves their uid/picks, it doesn't create a new account.
-  const requiresLogin = needsName || isAnonymous;
-  const docsLoading = !!uid && !profileLoaded;
-  const appLoading = !authReady || !friendsReady || docsLoading || loading;
-  // Hold the overlay until the kick animation completes its current loop,
-  // even when the app is ready sooner
-  const showBoot = useBootCycleHold(appLoading);
+  const requiresLogin = !uid || needsName;
+  const profileGate = !!uid && !profileLoaded;
+  const authGate = !authReady || !friendsReady || profileGate;
+  // Login only needs Firebase auth — don't block on Firestore friends or tournament data.
+  const showLogin = authReady && requiresLogin;
+  const shellLoading = showLogin ? false : authGate || loading;
+  const showBoot = useBootCycleHold(shellLoading);
   const bootLabel = !authReady
     ? "Signing in"
-    : !friendsReady || docsLoading
+    : !friendsReady || profileGate
       ? "Loading predictions"
       : "Loading tournament";
 
@@ -531,7 +528,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {!appLoading && authReady && profileLoaded && requiresLogin && (
+      {showLogin && (
         <LoginPage
           onSubmit={submitName}
           onConnectGoogle={connectGoogle}
@@ -579,7 +576,7 @@ export default function App() {
         selfUid={uid}
       />
 
-      {!appLoading && (
+      {!showLogin && !shellLoading && (
         <>
       {/* HEADER */}
       <header className="broadcast-bar shrink-0 z-40">
@@ -648,7 +645,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === "matchday" && !appLoading && (
+      {tab === "matchday" && (
         <MatchdayPage
           railMatches={railMatches}
           winners={displayWinners}
@@ -667,7 +664,7 @@ export default function App() {
         />
       )}
 
-      {tab === "standings" && !appLoading && (
+      {tab === "standings" && (
         <StandingsPage
           friends={rankedFriends}
           currentUid={uid}
@@ -687,7 +684,7 @@ export default function App() {
             </div>
           )}
 
-          {showBracket && !appLoading && (
+          {showBracket && (
             <ScrollBracket
               {...bracketProps}
               champion={champion}

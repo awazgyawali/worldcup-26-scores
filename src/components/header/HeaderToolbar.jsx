@@ -26,8 +26,7 @@ export function ViewingAsPicker({ name, isSelf = true, onClick, disabled = false
 }
 
 // Account icon with a popover (email + sign out) and a confirm-before-sign-out dialog.
-// The trigger shows the Google/email provider icon whenever the account has one —
-// the plain anonymous icon only appears if the user truly has no other login method.
+// The trigger shows the Google/email provider icon whenever the account has one.
 export function AccountMenu({ email, authProvider, onSignOut }) {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);

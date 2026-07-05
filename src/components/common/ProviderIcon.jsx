@@ -1,7 +1,7 @@
 import { IconGoogle, IconMail, IconUser } from "./icons";
 
 // ----------------------------------------------------------------------------
-// PROVIDER ICON — shows how someone signed in (Google / email / anonymous).
+// PROVIDER ICON — shows how someone signed in (Google / email).
 // Shared by FriendsModal's rows and the header AccountMenu trigger so both
 // surfaces stay in sync: only show the plain person icon when there truly is
 // no Google/email credential on the account.
@@ -24,7 +24,7 @@ export function ProviderIcon({ provider, className = "" }) {
     );
   }
   return (
-    <span className={[cls, "provider-icon--anon"].join(" ")} title="Anonymous player">
+    <span className={[cls, "provider-icon--anon"].join(" ")} title="Signed in">
       <IconUser />
     </span>
   );
