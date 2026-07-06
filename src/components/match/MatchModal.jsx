@@ -814,6 +814,10 @@ export function MatchModal({
   onClose,
   onFlagClick,
   onSaveScorePrediction,
+  onSaveMatchdayPick,
+  lockTimeMs = null,
+  teamById = null,
+  allowComeback = false,
   friends = [],
   selfUid,
 }) {
@@ -845,7 +849,7 @@ export function MatchModal({
       : `${m.team1?.code ?? "TBD"} v ${m.team2?.code ?? "TBD"}`;
 
   return (
-    <Modal open={!!match} onClose={onClose} maxW="max-w-3xl" sheet>
+    <Modal open={!!match} onClose={onClose} maxW="max-w-5xl" maxH="max-h-[min(92vh,880px)]" sheet>
       <div className="mm-header">
         <span className="mm-round-pill">{match.group || match.roundLabel}</span>
         {match.num && <span className="mm-match-num">Match {match.num}</span>}
@@ -865,7 +869,7 @@ export function MatchModal({
         />
       )}
 
-      <div className="nice-scroll relative flex-1 overflow-y-auto">
+      <div className="mm-scroll nice-scroll relative flex-1 overflow-y-auto">
         <MatchDetailBody
           match={match}
           winners={winners}
@@ -875,6 +879,10 @@ export function MatchModal({
           selfUid={selfUid}
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
+          onSaveMatchdayPick={onSaveMatchdayPick}
+          lockTimeMs={lockTimeMs}
+          teamById={teamById}
+          allowComeback={allowComeback}
         />
 
         {(prevMatch || nextMatch) && (

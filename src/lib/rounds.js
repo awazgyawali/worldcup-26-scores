@@ -4,12 +4,12 @@
 export const ROUNDS = [
   { key: "r32", label: "Round of 32", short: "R32", matches: 16, points: 5, nums: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87] },
   { key: "r16", label: "Round of 16", short: "R16", matches: 8, points: 10, nums: [89, 90, 93, 94, 91, 92, 95, 96] },
-  { key: "qf", label: "Quarter-finals", short: "QF", matches: 4, points: 15, nums: [97, 98, 99, 100] },
-  { key: "sf", label: "Semi-finals", short: "SF", matches: 2, points: 20, nums: [101, 102] },
-  { key: "final", label: "Final", short: "F", matches: 1, points: 30, nums: [104] },
+  { key: "qf", label: "Quarter-finals", short: "QF", matches: 4, points: 20, nums: [97, 98, 99, 100] },
+  { key: "sf", label: "Semi-finals", short: "SF", matches: 2, points: 35, nums: [101, 102] },
+  { key: "final", label: "Final", short: "F", matches: 1, points: 60, nums: [104] },
 ];
 export const FINAL_ROUND = ROUNDS.length - 1;
-export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 25, num: 103 };
+export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 15, num: 103 };
 export const key = (r, m) => `${r}-${m}`;
 /** Every knockout slot the user must fill before locking. */
 export const REQUIRED_PICK_KEYS = [
@@ -27,14 +27,6 @@ export const ROUND_LABEL = {
   "Semi-final": "Semi-final",
   "Match for third place": "Third place",
   Final: "Final",
-};
-export const ROUND_SHORT = {
-  "Round of 32": "R32",
-  "Round of 16": "R16",
-  "Quarter-final": "QF",
-  "Semi-final": "SF",
-  "Match for third place": "3RD",
-  Final: "FINAL",
 };
 
 export const KNOCKOUT_ROUNDS = new Set([

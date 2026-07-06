@@ -1,34 +1,6 @@
 // ----------------------------------------------------------------------------
 // LOGO
 // ----------------------------------------------------------------------------
-export function WCLogo({ className = "" }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} role="img" aria-label="World Cup 26">
-      <defs>
-        <linearGradient id="wcRing" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#d4a84b" />
-          <stop offset="100%" stopColor="#a67c2e" />
-        </linearGradient>
-        <linearGradient id="wcInner" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1a2939" />
-          <stop offset="100%" stopColor="#0d1622" />
-        </linearGradient>
-      </defs>
-      <circle cx="24" cy="24" r="22" fill="none" stroke="url(#wcRing)" strokeWidth="2.5" />
-      <circle cx="24" cy="24" r="18" fill="url(#wcInner)" stroke="rgba(242,238,230,0.08)" strokeWidth="1" />
-      <g fill="#d4a84b">
-        <path d="M18 14h12v5.5a6 6 0 0 1-12 0V14Z" />
-        <path d="M16.5 15.2h-2.8a2.8 2.8 0 0 0 3.2 3.2l-.4-1.6a1.1 1.1 0 0 1-1.3-1.3h1.3v-.3Zm15 0h2.8a2.8 2.8 0 0 1-3.2 3.2l.4-1.6a1.1 1.1 0 0 0 1.3-1.3h-1.5v-.3Z" />
-        <rect x="22.5" y="24.5" width="3" height="3.5" rx="0.5" />
-        <rect x="19" y="27.5" width="10" height="2.2" rx="1.1" />
-      </g>
-      <text x="24" y="38.5" textAnchor="middle" fontSize="10" fill="#f2eee6" fontFamily="Bebas Neue, sans-serif" letterSpacing="1.5">
-        26
-      </text>
-    </svg>
-  );
-}
-
 export function BrandBadge({ className = "" }) {
   return (
     <div
@@ -43,17 +15,6 @@ export function BrandBadge({ className = "" }) {
 // ----------------------------------------------------------------------------
 // HEADER ICONS
 // ----------------------------------------------------------------------------
-export function IconUsers({ className = "" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
 export function IconLock({ className = "" }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   getScorePrediction,
   gradeScorePrediction,
@@ -368,6 +368,8 @@ export function MatchdayPage({
   numToSlot,
   rankedFriends,
   uid,
+  selectedNum = null,
+  onSelectMatch,
   onSaveScorePrediction,
   onSaveMatchdayPick,
   lockTimeMs = null,
@@ -388,23 +390,21 @@ export function MatchdayPage({
   const showStepper = isViewingSelf && !(locked && hasScorePredictions);
 
   const nextMatchNum = useMemo(() => findNextMatchNum(railMatches), [railMatches]);
-  const [selectedNum, setSelectedNum] = useState(null);
-  const userPickedRef = useRef(false);
 
-  // Auto-select next fixture on tab open; stop overriding once the user picks from the rail.
-  useEffect(() => {
-    userPickedRef.current = false;
-  }, []);
+  const resolvedSelectedNum = useMemo(() => {
+    if (selectedNum != null && railMatches.some((m) => m.num === selectedNum)) return selectedNum;
+    return null;
+  }, [selectedNum, railMatches]);
 
+  // Default to the next fixture when opening Matchday without a match in the URL.
   useEffect(() => {
-    if (nextMatchNum != null && !userPickedRef.current) {
-      setSelectedNum(nextMatchNum);
-    }
-  }, [nextMatchNum]);
+    if (resolvedSelectedNum != null || nextMatchNum == null) return;
+    onSelectMatch?.(nextMatchNum, { replace: true });
+  }, [resolvedSelectedNum, nextMatchNum, onSelectMatch]);
 
   const selectedMatch = useMemo(
-    () => railMatches.find((m) => m.num === selectedNum) ?? null,
-    [railMatches, selectedNum]
+    () => railMatches.find((m) => m.num === resolvedSelectedNum) ?? null,
+    [railMatches, resolvedSelectedNum]
   );
 
   useEffect(() => {
@@ -414,21 +414,19 @@ export function MatchdayPage({
       if (!isPrev && !isNext) return;
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      const idx = railMatches.findIndex((m) => m.num === selectedNum);
+      const idx = railMatches.findIndex((m) => m.num === resolvedSelectedNum);
       if (idx === -1) return;
       const nextIdx = isPrev ? idx - 1 : idx + 1;
       if (nextIdx < 0 || nextIdx >= railMatches.length) return;
       e.preventDefault();
-      userPickedRef.current = true;
-      setSelectedNum(railMatches[nextIdx].num);
+      onSelectMatch?.(railMatches[nextIdx].num);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [railMatches, selectedNum]);
+  }, [railMatches, resolvedSelectedNum, onSelectMatch]);
 
   const handleSelectMatch = (m) => {
-    userPickedRef.current = true;
-    setSelectedNum(m.num);
+    onSelectMatch?.(m.num);
   };
 
   return (
@@ -483,7 +481,7 @@ export function MatchdayPage({
             winners={winners}
             scoreWinners={scoreWinners}
             numToSlot={numToSlot}
-            selectedNum={selectedNum}
+            selectedNum={resolvedSelectedNum}
             nextMatchNum={nextMatchNum}
             lockTimeMs={lockTimeMs}
             showComeback={isViewingSelf && locked}

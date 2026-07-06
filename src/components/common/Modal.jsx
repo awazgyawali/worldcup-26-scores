@@ -19,7 +19,7 @@ function useIsMobile(breakpoint = 640) {
 // ----------------------------------------------------------------------------
 // MODAL SHELL — pass `sheet` to render as a bottom sheet on mobile viewports.
 // ----------------------------------------------------------------------------
-export function Modal({ open, onClose, children, maxW = "max-w-lg", sheet = false }) {
+export function Modal({ open, onClose, children, maxW = "max-w-lg", maxH = "max-h-[min(88vh,720px)]", sheet = false }) {
   const isMobile = useIsMobile();
   const asSheet = sheet && isMobile;
 
@@ -56,7 +56,7 @@ export function Modal({ open, onClose, children, maxW = "max-w-lg", sheet = fals
             className={
               asSheet
                 ? "modal-sheet flex w-full max-h-[92dvh] flex-col overflow-hidden border-t border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl"
-                : `flex max-h-[min(88vh,720px)] w-full ${maxW} flex-col overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl`
+                : `flex ${maxH} w-full ${maxW} flex-col overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-2xl`
             }
             onClick={(e) => e.stopPropagation()}
           >

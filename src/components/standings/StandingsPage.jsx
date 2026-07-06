@@ -166,19 +166,20 @@ export function StandingsPage({
   friends,
   currentUid,
   activeUid,
+  expandedUid = null,
+  onToggle,
   actual,
   slotMatches,
   byNum,
 }) {
   const isMobile = useIsMobile();
-  const [expandedUid, setExpandedUid] = useState(null);
 
   const locked = friends.filter((f) => f.locked);
   const open = friends.filter((f) => !f.locked);
   const leaderPoints = locked[0]?.points ?? 0;
 
   const handleToggle = (friend) => {
-    setExpandedUid((prev) => (prev === friend.uid ? null : friend.uid));
+    onToggle?.(friend);
   };
 
   return (

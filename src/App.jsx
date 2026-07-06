@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { usePredictions } from "./hooks/usePredictions";
 import { useWorldCup } from "./hooks/useWorldCup";
+import { useAppUrl } from "./hooks/useAppUrl";
 
 import { isRef } from "./lib/teams";
 import { ROUNDS, key, GUIDE_MAX_INTERACTIONS, REQUIRED_PICK_KEYS } from "./lib/rounds";
@@ -57,7 +58,7 @@ import { LockConfirmModal } from "./components/modals/LockConfirmModal";
 // MAIN APP
 // ----------------------------------------------------------------------------
 export default function App() {
-  const [tab, setTab] = useState("bracket");
+  const { tab, matchNum, memberUid, hadExplicitTab, setTab, setMatchNum, setMemberUid } = useAppUrl();
   const [winners, setWinners] = useState(() => ({}));
   const [showFriends, setShowFriends] = useState(false);
   const [friendsPickerMode, setFriendsPickerMode] = useState("view");
@@ -215,8 +216,8 @@ export default function App() {
 
   // Default to Bracket while editing; jump to Matchday once you lock your own bracket.
   useEffect(() => {
-    if (isViewingSelf && locked) setTab("matchday");
-  }, [isViewingSelf, locked]);
+    if (isViewingSelf && locked && !hadExplicitTab) setTab("matchday", { replace: true });
+  }, [isViewingSelf, locked, hadExplicitTab, setTab]);
 
   const handleTabChange = useCallback(
     (next) => {
@@ -500,6 +501,19 @@ export default function App() {
     [rankedFriends, compareUid]
   );
 
+  const standingsExpandedUid = useMemo(() => {
+    if (!memberUid) return null;
+    return rankedFriends.some((f) => f.uid === memberUid) ? memberUid : null;
+  }, [memberUid, rankedFriends]);
+
+  const handleStandingsToggle = useCallback(
+    (friend) => {
+      const next = standingsExpandedUid === friend.uid ? null : friend.uid;
+      setMemberUid(next);
+    },
+    [standingsExpandedUid, setMemberUid]
+  );
+
   const compareMap = useMemo(() => {
     if (!compareFriend) return {};
     const map = {};
@@ -626,6 +640,10 @@ export default function App() {
         onClose={() => setMatchModal(null)}
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
         onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
+        onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+        lockTimeMs={activeLockTimeMs}
+        teamById={teamById}
+        allowComeback={isViewingSelf}
         friends={friends}
         selfUid={uid}
       />
@@ -707,6 +725,8 @@ export default function App() {
           numToSlot={numToSlot}
           rankedFriends={rankedFriends}
           uid={uid}
+          selectedNum={matchNum}
+          onSelectMatch={setMatchNum}
           onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
           onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
           lockTimeMs={activeLockTimeMs}
@@ -726,6 +746,8 @@ export default function App() {
           friends={rankedFriends}
           currentUid={uid}
           activeUid={activeUid}
+          expandedUid={standingsExpandedUid}
+          onToggle={handleStandingsToggle}
           actual={actual}
           slotMatches={slotMatches}
           byNum={byNum}

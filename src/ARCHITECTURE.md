@@ -26,7 +26,7 @@ and wires two data sources:
 
 `App.jsx` combines these into derived values via `lib/bracket.js` and
 `lib/scoring.js` (`slotMatches`, `actual`, `stats`, `rankedFriends`, etc.),
-then prop-drills them into `ScrollBracket`, `PredictionsRail`, and the modals.
+then prop-drills them into `ScrollBracket`, `MatchdayPage`, and the modals.
 **There is no React Context anywhere in this app — props are drilled
 explicitly on purpose.** Keep it that way; don't introduce Context for a
 single new field.
@@ -54,15 +54,13 @@ src/
   hooks/
     usePredictions.js       (pre-existing) Firebase auth/sync/friends/lock — see above
     useWorldCup.js           Live tournament data polling — see above
-    useCountUp.js            Small animated-counter hook (used by PointsPill)
 
   components/
     common/                 Cross-cutting UI with no feature ownership
-      icons.jsx              WCLogo + all inline SVG icons
+      icons.jsx              All inline SVG icons
       Modal.jsx               Modal + Drawer shells (Escape-to-close, scroll lock)
       Confetti.jsx
       BootLoadingOverlay.jsx
-      PointsEarnedBadge.jsx   Small corner badge, used on bracket + rail cards
       Countdown.jsx           Self-ticking "kickoff in Xm" badge
 
     bracket/                The knockout bracket tree (main view)
@@ -71,12 +69,6 @@ src/
       MatchCard.jsx           One bracket match "ticket" (two TeamRows + status middle)
       PodiumColumn.jsx        TrophyMark + ThirdPlaceCard + the center PodiumColumn
       ScrollBracket.jsx       BracketColumn + the full left/center/right bracket tree
-      PointsPill.jsx          Points total badge + breakdown popover (above the final)
-
-    rail/                   Bottom horizontal ticker of all matches (group stage +
-                            knockout), where group-stage winners are picked directly
-      RailCard.jsx            RailTeamRow + RailCard (one compact match card)
-      PredictionsRail.jsx     RailGuideLabel + the scrollable rail container
 
     team/                   Team "tournament journey" modal (master-detail)
       journeyHelpers.js       Pure helpers: journeyResult, buildJourneyTimeline
@@ -120,7 +112,8 @@ src/
 - New grading/points rule → `lib/scoring.js` (and mirror it in `App.jsx`'s
   `railStats`/`rankedFriends` if it needs to show up in the leaderboard)
 - New modal → `components/modals/`, reuse `Modal`/`Drawer` from `common/`
-- New rail card behavior (group-stage picks) → `components/rail/`
+- New schedule/match-card behavior (group-stage picks) → `components/matchday/`
+  (`ScheduleRailCard` in `MatchdayPage.jsx`)
 - Anything about a single team's match history → `components/team/`
 - New Firebase field, sync, or auth behavior (email/password, Google, sign out) →
   `hooks/usePredictions.js` only — `LoginPage.jsx` and `HeaderToolbar.jsx` just call

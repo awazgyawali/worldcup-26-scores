@@ -470,11 +470,6 @@ export function friendPredictionList(friend, { actual, slotMatches, byNum, lockT
   return events;
 }
 
-/** Graded bracket + score-call history for standings expand / bottom sheet. */
-export function friendStandingsEvents(friend, { actual, slotMatches, byNum, lockTimeMs = null }) {
-  return friendPredictionList(friend, { actual, slotMatches, byNum, lockTimeMs }).filter((e) => e.played);
-}
-
 /** Get detailed prediction info for a single match - used when viewing others' brackets */
 export function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roundPoints, teamById, byNum, lockTimeMs = null) {
   // Get winner pick
