@@ -104,6 +104,7 @@ export default function App() {
     syncError,
     syncing,
     clearSyncError,
+    persistWinners,
     submitName,
     connectGoogle,
     signUpWithEmail,
@@ -362,13 +363,17 @@ export default function App() {
     setMatchModal(m);
   }, []);
 
-  const saveScorePrediction = useCallback((slotKey, score, match) => {
+  const saveScorePrediction = useCallback(async (slotKey, score, match) => {
     if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
       return false;
     }
-    setWinners((prev) => normalizeScores(setScorePrediction(prev, slotKey, score), teams));
-    return true;
-  }, [teams]);
+    let next;
+    setWinners((prev) => {
+      next = normalizeScores(setScorePrediction(prev, slotKey, score), teams);
+      return next;
+    });
+    return persistWinners(next, { silent: true });
+  }, [teams, persistWinners]);
 
   // Comeback pick (Matchday only) — re-pick a winner for a locked knockout slot
   // whose bracket team is out. Stored under `md-<slotKey>`; never touches the

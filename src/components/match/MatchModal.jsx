@@ -376,12 +376,14 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
 
   const [scoreA, setScoreA] = useState(scorePrediction?.[0] ?? "");
   const [scoreB, setScoreB] = useState(scorePrediction?.[1] ?? "");
+  const [isEditingScore, setIsEditingScore] = useState(!scorePrediction);
   const [toast, setToast] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   useEffect(() => {
     setScoreA(scorePrediction?.[0] ?? "");
     setScoreB(scorePrediction?.[1] ?? "");
+    setIsEditingScore(!scorePrediction);
   }, [scorePrediction?.[0], scorePrediction?.[1], match?.num]);
 
   if (!match) return null;
@@ -397,17 +399,22 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
     setTimeout(() => setToast(null), 2500);
   };
 
-  const handleSaveScore = async () => {
+  const handleSaveScore = () => {
     const sA = parseInt(scoreA, 10);
     const sB = parseInt(scoreB, 10);
     if (!isNaN(sA) && !isNaN(sB) && sA >= 0 && sB >= 0) {
-      const ok = await onSaveScorePrediction?.(slotKey, [sA, sB], match);
-      if (ok) showToast(`Score prediction saved: ${sA}–${sB}`);
-      else showToast("Could not save prediction.", "error");
+      setIsEditingScore(false);
+      void Promise.resolve(onSaveScorePrediction?.(slotKey, [sA, sB], match)).then((ok) => {
+        if (ok === false) {
+          setIsEditingScore(true);
+          showToast("Could not save prediction.", "error");
+        }
+      });
     }
   };
 
   const hasScorePrediction = scorePrediction != null;
+  const showScoreInputs = canEditScore && (!hasScorePrediction || isEditingScore);
 
   const handleClearClick = () => {
     if (hasScorePrediction) {
@@ -418,13 +425,14 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
     }
   };
 
-  const handleClearConfirm = async () => {
+  const handleClearConfirm = () => {
     setScoreA("");
     setScoreB("");
-    const ok = await onSaveScorePrediction?.(slotKey, null, match);
-    if (ok) showToast("Score prediction cleared");
-    else showToast("Could not clear prediction.", "error");
+    setIsEditingScore(true);
     setShowClearConfirm(false);
+    void Promise.resolve(onSaveScorePrediction?.(slotKey, null, match)).then((ok) => {
+      if (ok === false) showToast("Could not clear prediction.", "error");
+    });
   };
 
   const [yourA, yourB] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);
@@ -638,28 +646,29 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 {/* You — editable tile for upcoming; same row layout as others once played */}
                 <div
                   className={
-                    canEditScore
+                    showScoreInputs
                       ? "mm-call-row mm-call-row--you"
                       : [
                           "mm-call-row",
+                          canEditScore && hasScorePrediction && "mm-call-row--you",
                           played && yourPoints === SCORE_EXACT_POINTS && "mm-call-row--exact",
                         ].filter(Boolean).join(" ")
                   }
                 >
                   <span
                     className={
-                      canEditScore
+                      showScoreInputs || (canEditScore && hasScorePrediction)
                         ? "mm-call-row__avatar mm-call-row__avatar--you"
                         : "mm-call-row__avatar"
                     }
                   >
-                    {canEditScore ? "You" : "Yo"}
+                    {showScoreInputs || (canEditScore && hasScorePrediction) ? "You" : "Yo"}
                   </span>
                   <span className="mm-call-row__name">
                     You
                     {played && yourPoints === SCORE_EXACT_POINTS && <span className="mm-nailed">NAILED IT</span>}
                   </span>
-                  {canEditScore ? (
+                  {showScoreInputs ? (
                     <span className="mm-call-row__edit">
                       <input
                         type="number"
@@ -691,6 +700,19 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                         </button>
                       )}
                     </span>
+                  ) : canEditScore && hasScorePrediction ? (
+                    <>
+                      <span className="mm-call-row__score">
+                        <ScoreNumbers a={yourA} b={yourB} ftScore={actualFtScore} graded={played} />
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingScore(true)}
+                        className="mm-call-row__edit-btn"
+                      >
+                        Edit
+                      </button>
+                    </>
                   ) : (
                     <>
                       <span className="mm-call-row__score">

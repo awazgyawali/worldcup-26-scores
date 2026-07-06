@@ -136,7 +136,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
     ? friends.find((f) => f.uid === viewingFriendUid) ?? null
     : null;
 
-  const persistWinners = useCallback(async (payload = winnersRef.current, { force = false } = {}) => {
+  const persistWinners = useCallback(async (payload = winnersRef.current, { force = false, silent = false } = {}) => {
     if (!enabled) {
       setSyncError("Cloud sync is disabled.");
       return false;
@@ -158,7 +158,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       return true;
     }
 
-    setSyncing(true);
+    if (!silent) setSyncing(true);
     try {
       pendingWriteRef.current = payloadJson;
       isSavingRef.current = true;
@@ -183,7 +183,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
       setSyncError(formatSyncError(err));
       return false;
     } finally {
-      setSyncing(false);
+      if (!silent) setSyncing(false);
     }
   }, [enabled]);
 
