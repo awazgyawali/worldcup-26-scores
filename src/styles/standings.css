@@ -739,6 +739,20 @@
   color: var(--agree);
 }
 
+.standings-events-table__comeback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--pitch) 40%, var(--border-strong));
+  background: var(--pitch-dim);
+  color: var(--pitch-glow);
+  font-size: 0.625rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 /* Mobile flat list + compact predictions */
 @media (max-width: 767px) {
   .standings-page {

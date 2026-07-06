@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getScorePrediction, gradeScorePrediction, SCORE_SUFFIX } from "../../lib/scoring";
+import {
+  getScorePrediction,
+  gradeScorePrediction,
+  getMatchdayPick,
+  isComebackEligible,
+  SCORE_SUFFIX,
+} from "../../lib/scoring";
 import { flagSrc, fmtTimeOnly, fmtCountdown, liveMinute } from "../../lib/format";
 import { MatchDetailBody, MatchTabs } from "../match/MatchModal";
 
@@ -59,6 +65,10 @@ function MatchdayDesktopDetail({
   selfUid,
   onFlagClick,
   onSaveScorePrediction,
+  onSaveMatchdayPick,
+  lockTimeMs,
+  teamById,
+  allowComeback,
 }) {
   if (!match) return null;
 
@@ -77,6 +87,10 @@ function MatchdayDesktopDetail({
         selfUid={selfUid}
         onFlagClick={onFlagClick}
         onSaveScorePrediction={onSaveScorePrediction}
+        onSaveMatchdayPick={onSaveMatchdayPick}
+        lockTimeMs={lockTimeMs}
+        teamById={teamById}
+        allowComeback={allowComeback}
       />
     </div>
   );
@@ -92,6 +106,10 @@ function MatchdayMobileView({
   selfUid,
   onFlagClick,
   onSaveScorePrediction,
+  onSaveMatchdayPick,
+  lockTimeMs,
+  teamById,
+  allowComeback,
   onSelectMatch,
 }) {
   if (!match) return null;
@@ -125,6 +143,10 @@ function MatchdayMobileView({
           selfUid={selfUid}
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
+          onSaveMatchdayPick={onSaveMatchdayPick}
+          lockTimeMs={lockTimeMs}
+          teamById={teamById}
+          allowComeback={allowComeback}
         />
 
         {(prevMatch || nextMatch) && (
@@ -197,13 +219,14 @@ function LockBanner({ title, sub, buttonLabel, onAction }) {
   );
 }
 
-function ScheduleRailCard({ m, isNext, selected, prediction, onSelect }) {
+function ScheduleRailCard({ m, isNext, selected, prediction, comebackEligible, comebackTeam, onSelect }) {
   const played = m.status === "played";
   const live = m.status === "live";
   const { scoreResult, scorePoints } = played && prediction && m.ftScore
     ? gradeScorePrediction(prediction, m.ftScore)
     : { scoreResult: null, scorePoints: 0 };
   const chip = callChip({ prediction, played, scorePoints, scoreResult, isNext: isNext && !live && !played });
+  const comebackWon = played && comebackTeam && m.winner?.id === comebackTeam.id;
 
   return (
     <div data-num={m.num} className="md-rail-tile">
@@ -246,6 +269,21 @@ function ScheduleRailCard({ m, isNext, selected, prediction, onSelect }) {
           </div>
         </div>
         <span className={["md-rail-card__chip", `md-rail-card__chip--${chip.kind}`].join(" ")}>{chip.text}</span>
+        {comebackEligible && (
+          <span
+            className={[
+              "md-rail-card__comeback",
+              comebackTeam && "md-rail-card__comeback--set",
+              played && comebackTeam && (comebackWon ? "md-rail-card__comeback--hit" : "md-rail-card__comeback--miss"),
+            ].filter(Boolean).join(" ")}
+          >
+            {comebackTeam
+              ? played
+                ? `↩ Comeback ${comebackTeam.code} · ${comebackWon ? "+10" : "+0"}`
+                : `↩ Comeback: ${comebackTeam.code}`
+              : "↩ Comeback pick +10"}
+          </span>
+        )}
       </button>
     </div>
   );
@@ -254,9 +292,12 @@ function ScheduleRailCard({ m, isNext, selected, prediction, onSelect }) {
 function MatchSchedule({
   matches,
   winners,
+  scoreWinners,
   numToSlot,
   selectedNum,
   nextMatchNum,
+  lockTimeMs,
+  showComeback,
   onSelect,
 }) {
   const scrollRef = useRef(null);
@@ -293,8 +334,14 @@ function MatchSchedule({
           <div className="md-schedule__date">{group.label}</div>
           {group.matches.map((m) => {
             const slotKey = matchSlotKey(m, numToSlot);
-            const prediction = slotKey ? getScorePrediction(winners, slotKey) : null;
+            const prediction = slotKey ? getScorePrediction(scoreWinners ?? winners, slotKey) : null;
             const isNext = m.num === nextMatchNum;
+            const bracketPickId =
+              m.isKnockout && slotKey && !slotKey.startsWith("rail-") ? winners?.[slotKey] : null;
+            const comebackEligible = showComeback && isComebackEligible(bracketPickId, m, lockTimeMs);
+            const comebackPickId = comebackEligible ? getMatchdayPick(scoreWinners ?? winners, slotKey) : null;
+            const comebackTeam =
+              comebackPickId === m.team1?.id ? m.team1 : comebackPickId === m.team2?.id ? m.team2 : null;
             return (
               <ScheduleRailCard
                 key={m.num}
@@ -302,6 +349,8 @@ function MatchSchedule({
                 isNext={isNext}
                 selected={m.num === selectedNum}
                 prediction={prediction}
+                comebackEligible={comebackEligible}
+                comebackTeam={comebackTeam}
                 onSelect={onSelect}
               />
             );
@@ -320,6 +369,9 @@ export function MatchdayPage({
   rankedFriends,
   uid,
   onSaveScorePrediction,
+  onSaveMatchdayPick,
+  lockTimeMs = null,
+  teamById = null,
   onFlagClick,
   locked = false,
   pickProgress = { filled: 0, total: 32, complete: false },
@@ -429,9 +481,12 @@ export function MatchdayPage({
           <MatchSchedule
             matches={railMatches}
             winners={winners}
+            scoreWinners={scoreWinners}
             numToSlot={numToSlot}
             selectedNum={selectedNum}
             nextMatchNum={nextMatchNum}
+            lockTimeMs={lockTimeMs}
+            showComeback={isViewingSelf && locked}
             onSelect={handleSelectMatch}
           />
         </aside>
@@ -449,6 +504,10 @@ export function MatchdayPage({
                   selfUid={uid}
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
+                  onSaveMatchdayPick={onSaveMatchdayPick}
+                  lockTimeMs={lockTimeMs}
+                  teamById={teamById}
+                  allowComeback={isViewingSelf}
                 />
               </div>
               <div className="matchday-md__detail-mobile">
@@ -462,6 +521,10 @@ export function MatchdayPage({
                   selfUid={uid}
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
+                  onSaveMatchdayPick={onSaveMatchdayPick}
+                  lockTimeMs={lockTimeMs}
+                  teamById={teamById}
+                  allowComeback={isViewingSelf}
                   onSelectMatch={handleSelectMatch}
                 />
               </div>

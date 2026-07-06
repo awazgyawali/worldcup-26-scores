@@ -763,3 +763,101 @@
 .match-tab-pill--active .match-tab-pill__score--predicted {
   color: var(--predict-bright);
 }
+
+/* ---------------------------------------------------------------------------
+   COMEBACK PICK — shown in the Matchday detail when the bracket winner for a
+   knockout game is out. Spans the full grid width beneath the score calls.
+   --------------------------------------------------------------------------- */
+.mm-comeback {
+  grid-column: 1 / -1;
+  border: 1px solid color-mix(in oklch, var(--pitch) 30%, var(--border-strong));
+  background: color-mix(in oklch, var(--pitch) 7%, var(--bg-elevated));
+}
+
+.mm-comeback__note {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin-bottom: 0.55rem;
+}
+
+.mm-comeback__dead {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 800;
+  color: var(--wrong);
+}
+
+.mm-comeback__dead img {
+  width: 1rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  object-fit: cover;
+  filter: grayscale(0.5);
+}
+
+.mm-comeback__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.mm-comeback__choice {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.mm-comeback__choice img {
+  width: 1.35rem;
+  height: 0.95rem;
+  border-radius: 2px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mm-comeback__choice-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-comeback__choice:hover {
+  border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
+  color: var(--text-primary);
+}
+
+.mm-comeback__choice--selected {
+  border-color: var(--pitch);
+  background: var(--pitch-dim);
+  color: var(--pitch-glow);
+}
+
+.mm-comeback__choice .mdi-check {
+  color: var(--pitch-glow);
+  font-weight: 900;
+}
+
+.mm-comeback__pts {
+  margin-left: 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 900;
+  color: var(--agree);
+}
+
+.mm-bracket-league__pill--you {
+  border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
+  background: var(--pitch-dim);
+  color: var(--pitch-glow);
+}

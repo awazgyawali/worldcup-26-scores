@@ -738,6 +738,35 @@
   color: var(--wrong);
 }
 
+.md-rail-card__comeback {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  border: 1px dashed color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
+  background: var(--pitch-dim);
+  color: var(--pitch-glow);
+}
+
+.md-rail-card__comeback--set {
+  border-style: solid;
+}
+
+.md-rail-card__comeback--hit {
+  border-color: color-mix(in oklch, var(--agree) 45%, var(--border-strong));
+  background: #12271b;
+  color: var(--agree);
+}
+
+.md-rail-card__comeback--miss {
+  border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
+  background: #2a1416;
+  color: var(--wrong);
+}
+
 /* ---------------------------------------------------------------- schedule strip (mobile) */
 .matchday-strip-wrap {
   flex-shrink: 0;

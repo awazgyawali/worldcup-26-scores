@@ -182,8 +182,80 @@ export function gradeScorePrediction(predictedScore, ftScore) {
 }
 
 
+// ----------------------------------------------------------------------------
+// COMEBACK PICKS
+// ----------------------------------------------------------------------------
+// The bracket is locked. When a knockout game is actually played, the winner a
+// player picked in their bracket for that slot may not even be one of the two
+// teams on the pitch (their team got knocked out earlier). That slot can never
+// score. A "comeback pick" lets the player choose a fresh winner from the two
+// real teams — in the Matchday tab only, never touching the bracket — for a flat
+// bonus if correct. Stored under a `md-<slotKey>` key inside the same `winners`
+// map (so it syncs for free), separate from the bracket pick and score call.
+export const MATCHDAY_PICK_POINTS = 10;
+export const MATCHDAY_KEY_PREFIX = "md-";
+
+export const matchdayKey = (slotKey) => MATCHDAY_KEY_PREFIX + slotKey;
+
+/** The player's comeback-pick team id for a slot, or null. */
+export function getMatchdayPick(winners, slotKey) {
+  if (!slotKey) return null;
+  return winners[matchdayKey(slotKey)] ?? null;
+}
+
+/** Set (or clear, when teamId is falsy) the comeback pick for a slot. */
+export function setMatchdayPick(winners, slotKey, teamId) {
+  const k = matchdayKey(slotKey);
+  if (!teamId) {
+    const next = { ...winners };
+    delete next[k];
+    return next;
+  }
+  return { ...winners, [k]: teamId };
+}
+
+/** True when the bracket winner for this knockout slot isn't one of the two
+ *  teams actually playing — i.e. the slot is eligible for a comeback pick.
+ *  `bracketPickId` is the locked bracket winner (winners[slotKey]). */
+export function isComebackEligible(bracketPickId, match, lockTimeMs) {
+  if (!bracketPickId) return false;
+  if (!match?.team1 || !match?.team2) return false;
+  if (!isMatchScorable(match, lockTimeMs)) return false;
+  return bracketPickId !== match.team1.id && bracketPickId !== match.team2.id;
+}
+
+/** Whether the bracket pick is one of the two teams actually playing. */
+function bracketPickAlive(bracketPickId, match) {
+  if (!bracketPickId || !match) return false;
+  return bracketPickId === match.team1?.id || bracketPickId === match.team2?.id;
+}
+
+/** Other users' comeback picks for a fixture, grouped by team (excludes self).
+ *  Only counts friends whose own bracket winner is out of this game. */
+export function friendComebackPicksForMatch(friends, slotKey, match, excludeUid) {
+  const empty = { team1: [], team2: [] };
+  if (!slotKey || slotKey.startsWith("rail-") || !match?.isKnockout || !match?.team1 || !match?.team2) {
+    return empty;
+  }
+  const team1 = [];
+  const team2 = [];
+  for (const f of friends) {
+    if (!f.name || f.uid === excludeUid) continue;
+    if (bracketPickAlive(f.winners?.[slotKey], match)) continue; // their bracket team is playing
+    const pickId = getMatchdayPick(f.winners, slotKey);
+    if (!pickId) continue;
+    if (pickId === match.team1.id) team1.push({ uid: f.uid, name: f.name });
+    else if (pickId === match.team2.id) team2.push({ uid: f.uid, name: f.name });
+  }
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  team1.sort(byName);
+  team2.sort(byName);
+  return { team1, team2 };
+}
+
 /** Grade picks — points only for finished matches where the user made a pick.
  *  Score predictions on real fixtures are graded separately (5 / 20 pts).
+ *  Comeback picks (dead bracket slot re-picked in Matchday) score +10 each.
  */
 export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
   const byRound = {};
@@ -193,9 +265,12 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
     played = 0,
     scoreOneSide = 0,
     scoreExact = 0,
-    scorePoints = 0;
+    scorePoints = 0,
+    matchdayCorrect = 0,
+    matchdayTotal = 0,
+    matchdayPoints = 0;
   for (const r of [...ROUNDS, THIRD_PLACE]) {
-    byRound[r.key] = { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0 };
+    byRound[r.key] = { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0, matchdayCorrect: 0, matchdayTotal: 0, matchdayPoints: 0 };
     const count = r.matches ?? 1;
     for (let m = 0; m < count; m++) {
       const k = key(r.key, m);
@@ -204,6 +279,22 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
       if (!isMatchScorable(match, lockTimeMs)) continue;
       byRound[r.key].played++;
       played++;
+
+      // Comeback pick: only when the bracket winner isn't in this game.
+      if (!bracketPickAlive(winners[k], match)) {
+        const comebackPick = getMatchdayPick(winners, k);
+        if (comebackPick) {
+          byRound[r.key].matchdayTotal++;
+          matchdayTotal++;
+          if (comebackPick === actual[k]) {
+            byRound[r.key].matchdayCorrect++;
+            byRound[r.key].matchdayPoints += MATCHDAY_PICK_POINTS;
+            matchdayCorrect++;
+            matchdayPoints += MATCHDAY_PICK_POINTS;
+          }
+        }
+      }
+
       if (!winners[k]) continue;
       byRound[r.key].total++;
       total++;
@@ -229,7 +320,11 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
       }
     }
   }
-  return { correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints, totalPoints: points + scorePoints };
+  return {
+    correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints,
+    matchdayCorrect, matchdayTotal, matchdayPoints,
+    totalPoints: points + scorePoints + matchdayPoints,
+  };
 }
 
 /** Last `n` graded bracket picks (winner picks only) in chronological order, for
@@ -290,6 +385,19 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
     scoreResult = graded.scoreResult;
   }
 
+  // Comeback pick — only when the bracket winner isn't playing this knockout game.
+  const isKnockoutSlot = !!slotKey && !slotKey.startsWith("rail-");
+  const bracketDead = isKnockoutSlot && !!predictedWinnerId && !bracketPickAlive(predictedWinnerId, match);
+  const comebackPickId = bracketDead ? getMatchdayPick(friend.winners, slotKey) : null;
+  const comebackTeam = comebackPickId ? teamOnMatch(match, comebackPickId) : null;
+  let comebackCorrect = null;
+  let comebackPts = 0;
+  if (played && comebackPickId) {
+    const actualWinner = actual[slotKey] || match.winner?.id;
+    comebackCorrect = !!(actualWinner && comebackPickId === actualWinner);
+    comebackPts = comebackCorrect ? MATCHDAY_PICK_POINTS : 0;
+  }
+
   return {
     id: slotKey,
     roundLabel,
@@ -301,11 +409,15 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
     bracketTeam: teamOnMatch(match, predictedWinnerId),
     bracketCorrect: played ? winnerCorrect : null,
     bracketPts,
+    bracketDead,
+    comebackTeam,
+    comebackCorrect: played ? comebackCorrect : null,
+    comebackPts,
     scoreDisplay,
     actualScore: played ? ftDisplay(match) : null,
     scorePts,
     scoreResult,
-    totalPts: bracketPts + scorePts,
+    totalPts: bracketPts + scorePts + comebackPts,
   };
 }
 

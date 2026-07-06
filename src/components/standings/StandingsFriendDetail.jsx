@@ -121,6 +121,19 @@ function EventRow({ event, table = false }) {
                 </span>
               )}
               {event.bracketPts > 0 && <span className="standings-events-table__mini-pts">+{event.bracketPts}</span>}
+              {event.comebackTeam && (
+                <span className="standings-events-table__comeback">
+                  ↩
+                  <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-event__flag-sm" />
+                  {event.comebackTeam.code}
+                  {!event.isFuture && (
+                    <span className={event.comebackCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                      {event.comebackCorrect ? "✓" : "✕"}
+                    </span>
+                  )}
+                  {event.comebackPts > 0 && <span className="standings-events-table__mini-pts">+{event.comebackPts}</span>}
+                </span>
+              )}
             </>
           ) : (
             <span className="standings-detail__muted">—</span>
@@ -205,6 +218,25 @@ function EventRow({ event, table = false }) {
             {event.isFuture ? "·" : event.scorePts > 0 ? `+${event.scorePts}` : event.scoreDisplay ? "0" : "—"}
           </span>
         </div>
+        {event.comebackTeam && (
+          <div className="standings-event__line">
+            <span className="standings-event__label">Comeback</span>
+            <span className="standings-event__value">
+              <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-event__flag-sm" />
+              {event.comebackTeam.code}
+              {event.isFuture ? (
+                <span className="standings-m-pred__pick-dot" aria-hidden="true" />
+              ) : (
+                <span className={event.comebackCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                  {event.comebackCorrect ? "✓" : "✕"}
+                </span>
+              )}
+            </span>
+            <span className={event.comebackPts > 0 ? "standings-event__pts standings-event__pts--hit" : "standings-event__pts"}>
+              {event.isFuture ? "·" : event.comebackPts > 0 ? `+${event.comebackPts}` : "0"}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -234,7 +266,10 @@ export function StandingsFriendDetail({
   const progress = getPickProgress(friend.winners);
   const earnedEvents = allEvents.filter((e) => e.totalPts > 0);
   const scorePts = (friend.scorePoints ?? 0) + (friend.railScorePoints ?? 0);
-  const bracketPts = (friend.points ?? 0) - scorePts;
+  const comebackPts = friend.matchdayPoints ?? 0;
+  const comebackCorrect = friend.matchdayCorrect ?? 0;
+  const comebackTotal = friend.matchdayTotal ?? 0;
+  const bracketPts = (friend.points ?? 0) - scorePts - comebackPts;
   const exact = (friend.scoreExact ?? 0) + (friend.railScoreExact ?? 0);
   const oneSide = (friend.scoreOneSide ?? 0) + (friend.railScoreOneSide ?? 0);
 
@@ -278,6 +313,10 @@ export function StandingsFriendDetail({
               <div className="standings-detail__stat">
                 <span className="standings-detail__stat-val">{scorePts}</span>
                 <span className="standings-detail__stat-label">Score pts</span>
+              </div>
+              <div className="standings-detail__stat">
+                <span className="standings-detail__stat-val">{comebackPts}</span>
+                <span className="standings-detail__stat-label">Comeback pts</span>
               </div>
               <div className="standings-detail__stat">
                 <span className="standings-detail__stat-val">{exact}/{oneSide}</span>

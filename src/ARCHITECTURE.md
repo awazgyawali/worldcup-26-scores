@@ -168,3 +168,29 @@ regardless of kickoff) was too bulky:
   place outside `MatchModal.jsx` that Stage B touched. No grading logic
   changed — `points` is just the pre-existing `gradeScorePrediction` result
   exposed on each entry.
+
+## Stage C: comeback picks (Matchday-only second-chance winner)
+
+The bracket is locked, but a slot's picked winner may not even be one of the two
+teams that actually reached that knockout game (their team was knocked out
+earlier). That dead slot can never score. A **comeback pick** lets the player
+re-pick a winner from the two real teams — **in the Matchday tab only, never
+touching the bracket** — for a flat **+10** if correct (`MATCHDAY_PICK_POINTS`).
+It's purely additive: the dead bracket slot was already worth 0.
+
+- **Storage:** a new `md-<slotKey>` key inside the same `winners` map (e.g.
+  `md-r16-3`), alongside the bracket pick (`r16-3`) and score call
+  (`r16-3-score`). Synced for free; `normalize`/`normalizeScores` ignore it.
+  Helpers `getMatchdayPick`/`setMatchdayPick`/`matchdayKey` in `lib/scoring.js`.
+- **Eligibility:** `isComebackEligible(bracketPickId, match, lockTimeMs)` — the
+  bracket winner isn't one of the two teams playing, the match is scorable, and
+  both real teams are confirmed. Editable until kickoff (same window as score
+  calls); `App.jsx`'s `saveMatchdayPick` writes it.
+- **Grading:** `gradeWinners` adds `matchdayPoints`/`matchdayCorrect`/
+  `matchdayTotal` and folds them into `totalPoints`, so the leaderboard
+  (`rankedFriends`) and header total pick it up automatically.
+- **UI:** the "Comeback pick" card in `MatchDetailBody` (gated by the
+  `allowComeback` prop → Matchday tab, self only), a badge on the Matchday
+  schedule rail (`ScheduleRailCard`), and a "Comeback" line + "Comeback pts"
+  stat in `StandingsFriendDetail` (via new `buildFriendEvent` fields). The
+  bracket views are intentionally untouched.

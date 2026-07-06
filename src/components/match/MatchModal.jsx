@@ -7,11 +7,15 @@ import {
   friendScorePredictionsForMatch,
   friendsMissingScorePredictionForMatch,
   friendBracketPicksForMatch,
+  friendComebackPicksForMatch,
   getScorePrediction,
+  getMatchdayPick,
+  isComebackEligible,
   gradeScorePrediction,
   mapPredictedScores,
   SCORE_ONE_SIDE_POINTS,
   SCORE_EXACT_POINTS,
+  MATCHDAY_PICK_POINTS,
 } from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
@@ -260,12 +264,61 @@ function BracketPicksLeague({ match, bracketPicks, played }) {
   );
 }
 
+/** Comeback picks league — who re-picked which team for a dead-bracket knockout
+ *  game, grouped by team with the +10 shown on the winning side once played. */
+function ComebackLeague({ match, played, youPickId, comebackPicks }) {
+  const youPill = youPickId ? [{ uid: "__you__", name: "You", me: true }] : [];
+  const rows = [
+    { team: match.team1, picks: [...(youPickId === match.team1?.id ? youPill : []), ...comebackPicks.team1] },
+    { team: match.team2, picks: [...(youPickId === match.team2?.id ? youPill : []), ...comebackPicks.team2] },
+  ].filter((row) => row.team && row.picks.length > 0);
+
+  if (rows.length === 0) return <p className="mm-calls__empty">No comeback picks for this one.</p>;
+
+  return (
+    <div className="mm-bracket-league mm-comeback__league">
+      {rows.map(({ team, picks }) => {
+        const won = played && match.winner?.id === team.id;
+        const lost = played && match.winner && match.winner.id !== team.id;
+        return (
+          <div
+            key={team.id}
+            className={[
+              "mm-bracket-league__row",
+              won && "mm-bracket-league__row--right",
+              lost && "mm-bracket-league__row--wrong",
+            ].filter(Boolean).join(" ")}
+          >
+            <span className="mm-bracket-league__team">
+              <img src={flagSrc(team.iso2, 40)} alt="" />
+              {team.code}
+              {won && <span className="mdi mdi-check" aria-hidden="true" />}
+              {lost && <span className="mdi mdi-close" aria-hidden="true" />}
+              {won && <span className="mm-comeback__pts">+{MATCHDAY_PICK_POINTS}</span>}
+            </span>
+            <span className="mm-bracket-league__names">
+              {picks.map((p) => (
+                <span
+                  key={p.uid}
+                  className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
+                >
+                  {p.name}
+                </span>
+              ))}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // MATCH DETAIL BODY — reusable scoreline + timeline + score calls. Used inside
 // the modal (other tabs) and inline in the Matchday master-detail pane.
 // onSaveScorePrediction(slotKey, score|null, match) → boolean.
 // ----------------------------------------------------------------------------
-export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction }) {
+export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
   const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
   const scoreSource = scoreWinners ?? winners;
   const scorePrediction = slotKey ? getScorePrediction(scoreSource, slotKey) : null;
@@ -280,6 +333,10 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   );
   const bracketPicks = useMemo(
     () => (match ? friendBracketPicksForMatch(friends, slotKey, match, selfUid) : { team1: [], team2: [] }),
+    [friends, slotKey, match, selfUid]
+  );
+  const comebackPicks = useMemo(
+    () => (match ? friendComebackPicksForMatch(friends, slotKey, match, selfUid) : { team1: [], team2: [] }),
     [friends, slotKey, match, selfUid]
   );
 
@@ -349,6 +406,19 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const bracketPickTeam =
     bracketPickId === match.team1?.id ? match.team1 : bracketPickId === match.team2?.id ? match.team2 : null;
   const bracketPickCorrect = played && match.winner && bracketPickId ? match.winner.id === bracketPickId : null;
+
+  // Comeback pick — offered when the bracket winner is out of this knockout game.
+  const comebackEligible = allowComeback && isComebackEligible(bracketPickId, match, lockTimeMs);
+  const comebackPickId = comebackEligible ? getMatchdayPick(scoreSource, slotKey) : null;
+  const deadBracketTeam = comebackEligible ? (teamById?.get(bracketPickId) ?? null) : null;
+  const canEditComeback = comebackEligible && upcoming && !!onSaveMatchdayPick && !!slotKey;
+
+  const handleComebackPick = async (teamId) => {
+    const next = comebackPickId === teamId ? null : teamId; // tap the current pick again to clear
+    const ok = await onSaveMatchdayPick?.(slotKey, next, match);
+    if (ok) showToast(next ? "Comeback pick saved" : "Comeback pick cleared");
+    else showToast("Could not save comeback pick.", "error");
+  };
 
   const statusLabel = played
     ? `${match.phase === "aet" ? "AFTER EXTRA TIME" : match.phase === "pens" ? "PENALTIES" : "FULL TIME"}${match.kickoff ? ` · ${match.kickoff.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase()}` : ""}`
@@ -526,6 +596,57 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                     {played && " — zero points, zero excuses."}
                   </p>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* COMEBACK PICK — bracket team is out; re-pick a winner for +10 */}
+          {comebackEligible && (
+            <div className="mm-card mm-comeback">
+              <div className="mm-card__head">
+                <p className="mm-card__title">Comeback pick</p>
+                <span className="mm-card__hint">+{MATCHDAY_PICK_POINTS} if correct</span>
+              </div>
+
+              <p className="mm-comeback__note">
+                Your bracket pick{" "}
+                {deadBracketTeam ? (
+                  <span className="mm-comeback__dead">
+                    <img src={flagSrc(deadBracketTeam.iso2, 40)} alt="" />
+                    {deadBracketTeam.code}
+                  </span>
+                ) : (
+                  "for this slot"
+                )}{" "}
+                is out of this game.{canEditComeback ? " Pick a winner to stay in it." : ""}
+              </p>
+
+              {canEditComeback ? (
+                <div className="mm-comeback__choices">
+                  {[match.team1, match.team2].map((team) => {
+                    const selected = comebackPickId === team.id;
+                    return (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => handleComebackPick(team.id)}
+                        className={["mm-comeback__choice", selected && "mm-comeback__choice--selected"].filter(Boolean).join(" ")}
+                        aria-pressed={selected}
+                      >
+                        <img src={flagSrc(team.iso2, 40)} alt="" />
+                        <span className="mm-comeback__choice-name">{team.name}</span>
+                        {selected && <span className="mdi mdi-check" aria-hidden="true" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <ComebackLeague
+                  match={match}
+                  played={played}
+                  youPickId={comebackPickId}
+                  comebackPicks={comebackPicks}
+                />
               )}
             </div>
           )}

@@ -21,6 +21,7 @@ import {
 import {
   SCORE_SUFFIX,
   setScorePrediction,
+  setMatchdayPick,
   normalizeScores,
   gradeScorePrediction,
   gradeWinners,
@@ -368,6 +369,17 @@ export default function App() {
     return true;
   }, [teams]);
 
+  // Comeback pick (Matchday only) — re-pick a winner for a locked knockout slot
+  // whose bracket team is out. Stored under `md-<slotKey>`; never touches the
+  // bracket. Editable until kickoff, same as score calls.
+  const saveMatchdayPick = useCallback((slotKey, teamId, match) => {
+    if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
+      return false;
+    }
+    setWinners((prev) => setMatchdayPick(prev, slotKey, teamId));
+    return true;
+  }, []);
+
   const activeLockTimeMs = viewingFriend ? viewingFriend.lockedAt : lockedAt;
   const scorableActual = useMemo(
     () => buildScorableActual(actual, slotMatches, activeLockTimeMs),
@@ -696,6 +708,9 @@ export default function App() {
           rankedFriends={rankedFriends}
           uid={uid}
           onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
+          onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+          lockTimeMs={activeLockTimeMs}
+          teamById={teamById}
           onOpenMatch={setMatchModal}
           onFlagClick={setTeamModal}
           locked={locked}
