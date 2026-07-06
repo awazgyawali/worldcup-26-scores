@@ -253,6 +253,22 @@ export function friendComebackPicksForMatch(friends, slotKey, match, excludeUid)
   return { team1, team2 };
 }
 
+/** Locked, non-abandoned friends whose bracket winner is out of this knockout
+ *  game but who haven't made a comeback pick yet (excludes self) — i.e. players
+ *  who still need to re-pick a winner here. */
+export function friendsMissingComebackForMatch(friends, slotKey, match, excludeUid) {
+  if (!slotKey || slotKey.startsWith("rail-") || !match?.isKnockout || !match?.team1 || !match?.team2) {
+    return [];
+  }
+  return friends
+    .filter((f) => f.uid !== excludeUid && f.name && f.locked && !f.abandoned)
+    .filter((f) => !!f.winners?.[slotKey]) // they made a bracket pick for this slot
+    .filter((f) => !bracketPickAlive(f.winners[slotKey], match)) // …that's now out of this game
+    .filter((f) => !getMatchdayPick(f.winners, slotKey)) // and no comeback pick yet
+    .map((f) => ({ uid: f.uid, name: f.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Grade picks — points only for finished matches where the user made a pick.
  *  Score predictions on real fixtures are graded separately (5 / 20 pts).
  *  Comeback picks (dead bracket slot re-picked in Matchday) score +10 each.

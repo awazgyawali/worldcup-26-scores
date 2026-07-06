@@ -358,6 +358,23 @@
   color: var(--text-muted);
 }
 
+/* Section header row: title on the left, "+N if correct" hint on the right. */
+.mm-league-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.mm-league-pts {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #e8c56a;
+  text-shadow: 0 0 12px rgba(232, 197, 106, 0.25);
+}
+
 .mm-bracket-league__row {
   display: flex;
   align-items: flex-start;
@@ -765,20 +782,71 @@
 }
 
 /* ---------------------------------------------------------------------------
-   COMEBACK PICK — shown in the Matchday detail when the bracket winner for a
-   knockout game is out. Spans the full grid width beneath the score calls.
+   YOUR CALLS COLUMN — your comeback winner pick + score calls, stacked so the
+   comeback selection sits directly above your score call.
    --------------------------------------------------------------------------- */
-.mm-comeback {
-  grid-column: 1 / -1;
-  border: 1px solid color-mix(in oklch, var(--pitch) 30%, var(--border-strong));
-  background: color-mix(in oklch, var(--pitch) 7%, var(--bg-elevated));
+.mm-calls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+/* Your comeback selection: same card chrome as score calls, thin accent edge. */
+.mm-comeback-card {
+  border-left: 2px solid color-mix(in oklch, var(--pitch) 55%, transparent);
+}
+
+/* Your resolved comeback pick (once the game is live/played) */
+.mm-comeback__mine {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--pitch);
+  background: var(--pitch-dim);
+  color: var(--pitch-glow);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.mm-comeback__mine img {
+  width: 1.5rem;
+  height: 1.05rem;
+  border-radius: 2px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mm-comeback__mine-pts {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.mm-comeback__mine--hit {
+  border-color: color-mix(in oklch, var(--agree) 55%, var(--border-strong));
+  background: color-mix(in oklch, var(--agree) 12%, var(--bg-elevated));
+  color: var(--agree);
+}
+
+.mm-comeback__mine--hit .mm-comeback__mine-pts {
+  color: var(--agree);
+}
+
+.mm-comeback__mine--miss {
+  border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
+  background: color-mix(in oklch, var(--wrong) 10%, var(--bg-elevated));
+  color: color-mix(in oklch, var(--wrong) 85%, var(--text-secondary));
 }
 
 .mm-comeback__note {
   font-size: 0.75rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--text-secondary);
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.5rem;
 }
 
 .mm-comeback__dead {
@@ -794,33 +862,33 @@
   height: 0.7rem;
   border-radius: 2px;
   object-fit: cover;
-  filter: grayscale(0.5);
+  filter: grayscale(0.4);
 }
 
 .mm-comeback__choices {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .mm-comeback__choice {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 0.5rem;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.55rem;
   border: 1px solid var(--border-strong);
   background: var(--bg-surface);
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
   text-align: left;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
 .mm-comeback__choice img {
-  width: 1.35rem;
-  height: 0.95rem;
+  width: 1.5rem;
+  height: 1.05rem;
   border-radius: 2px;
   object-fit: cover;
   flex-shrink: 0;
@@ -831,6 +899,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mm-comeback__choice-tick {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
 }
 
 .mm-comeback__choice:hover {
@@ -844,6 +920,7 @@
   color: var(--pitch-glow);
 }
 
+.mm-comeback__choice--selected .mm-comeback__choice-tick,
 .mm-comeback__choice .mdi-check {
   color: var(--pitch-glow);
   font-weight: 900;
@@ -860,4 +937,121 @@
   border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
   background: var(--pitch-dim);
   color: var(--pitch-glow);
+}
+
+/* "Still to pick a comeback" nudge list */
+.mm-missing--comeback {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-strong);
+}
+
+/* Match detail (venue/time/goals) — lowest-priority block, pushed to the bottom
+   of the picks card with a clear divider and breathing room above it. */
+.mm-matchinfo {
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-strong);
+}
+
+/* ---------------------------------------------------------------------------
+   MATCHDAY DESKTOP DETAIL — roomier layout: clearer labels, more breathing
+   room, larger selection targets. Scoped so the popup match modal is untouched.
+   --------------------------------------------------------------------------- */
+@media (min-width: 1024px) {
+  .matchday-desktop-detail .mm-grid {
+    grid-template-columns: 1fr 1.05fr;
+    gap: 1.25rem;
+    padding: 0.25rem 1.375rem 1.375rem;
+  }
+
+  .matchday-desktop-detail .mm-card {
+    padding: 1rem 1.15rem;
+    border-radius: 0.75rem;
+  }
+
+  .matchday-desktop-detail .mm-card__title {
+    font-size: 0.6875rem;
+    letter-spacing: 0.13em;
+    margin-bottom: 0.6rem;
+  }
+
+  .matchday-desktop-detail .mm-card__hint {
+    font-size: 0.6875rem;
+  }
+
+  .matchday-desktop-detail .mm-calls {
+    gap: 0.5rem;
+  }
+
+  .matchday-desktop-detail .mm-call-row {
+    padding: 0.5rem 0.65rem;
+  }
+
+  /* League bracket picks — slightly bigger and roomier in the Matchday detail */
+  .matchday-desktop-detail .mm-bracket-league {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+  }
+
+  .matchday-desktop-detail .mm-bracket-league__title {
+    font-size: 0.8125rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.55rem;
+  }
+
+  .matchday-desktop-detail .mm-bracket-league__row {
+    padding: 0.4rem 0.15rem;
+  }
+
+  .matchday-desktop-detail .mm-bracket-league__team {
+    font-size: 0.9375rem;
+  }
+
+  .matchday-desktop-detail .mm-bracket-league__team img {
+    width: 1.6rem;
+    height: 1.1rem;
+  }
+
+  .matchday-desktop-detail .mm-bracket-league__pill {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .matchday-desktop-detail .mm-league-pts {
+    font-size: 0.75rem;
+  }
+
+  /* Match detail pushed to the bottom — extra spacing so it reads as secondary */
+  .matchday-desktop-detail .mm-matchinfo {
+    margin-top: 1.15rem;
+    padding-top: 1rem;
+  }
+
+  .matchday-desktop-detail .mm-missing--comeback {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+  }
+
+  /* Your comeback selection card (right column) */
+  .matchday-desktop-detail .mm-comeback-card .mm-comeback__note {
+    font-size: 0.8125rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .matchday-desktop-detail .mm-comeback__choices {
+    gap: 0.55rem;
+  }
+
+  .matchday-desktop-detail .mm-comeback__choice,
+  .matchday-desktop-detail .mm-comeback__mine {
+    padding: 0.75rem 0.9rem;
+    font-size: 0.9375rem;
+  }
+
+  .matchday-desktop-detail .mm-comeback__choice img,
+  .matchday-desktop-detail .mm-comeback__mine img {
+    width: 1.85rem;
+    height: 1.3rem;
+  }
 }

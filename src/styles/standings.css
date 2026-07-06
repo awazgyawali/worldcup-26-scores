@@ -1061,6 +1061,22 @@
     gap: 0.15rem;
   }
 
+  .standings-m-pred__comeback {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 999px;
+    background: var(--pitch-dim);
+    color: var(--pitch-glow);
+    font-size: 0.625rem;
+    font-weight: 800;
+  }
+
+  .standings-m-pred__comeback .standings-m-pred__flag-sm {
+    width: 0.85rem;
+  }
+
   .standings-m-pred__pick-dot {
     width: 0.3125rem;
     height: 0.3125rem;

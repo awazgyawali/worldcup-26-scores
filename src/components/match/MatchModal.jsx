@@ -8,6 +8,7 @@ import {
   friendsMissingScorePredictionForMatch,
   friendBracketPicksForMatch,
   friendComebackPicksForMatch,
+  friendsMissingComebackForMatch,
   getScorePrediction,
   getMatchdayPick,
   isComebackEligible,
@@ -19,6 +20,15 @@ import {
 } from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
+import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
+
+/** Points a correct winner pick earns for a knockout slot (by round). */
+function roundPointsForSlot(slotKey) {
+  if (!slotKey || slotKey.startsWith("rail-")) return null;
+  if (slotKey.startsWith("third")) return THIRD_PLACE.points;
+  const roundKey = slotKey.split("-")[0];
+  return ROUNDS.find((r) => r.key === roundKey)?.points ?? null;
+}
 
 // ----------------------------------------------------------------------------
 // MATCH DETAIL MODAL — timeline left, league score calls ranked by points right.
@@ -221,7 +231,7 @@ function initials(name) {
   return name.trim().slice(0, 2).toUpperCase();
 }
 
-function BracketPicksLeague({ match, bracketPicks, played }) {
+function BracketPicksLeague({ match, bracketPicks, played, pointsHint }) {
   const rows = [
     { team: match.team1, picks: bracketPicks.team1 },
     { team: match.team2, picks: bracketPicks.team2 },
@@ -231,7 +241,10 @@ function BracketPicksLeague({ match, bracketPicks, played }) {
 
   return (
     <div className="mm-bracket-league">
-      <p className="mm-bracket-league__title">League bracket picks</p>
+      <div className="mm-league-head">
+        <p className="mm-bracket-league__title">League bracket picks</p>
+        {pointsHint != null && <span className="mm-league-pts">+{pointsHint} if correct</span>}
+      </div>
       {rows.map(({ team, picks }) => {
         const won = played && match.winner?.id === team.id;
         const lost = played && match.winner && match.winner.id !== team.id;
@@ -265,18 +278,35 @@ function BracketPicksLeague({ match, bracketPicks, played }) {
 }
 
 /** Comeback picks league — who re-picked which team for a dead-bracket knockout
- *  game, grouped by team with the +10 shown on the winning side once played. */
-function ComebackLeague({ match, played, youPickId, comebackPicks }) {
+ *  game (everyone whose bracket team is out), grouped by team with the +10 shown
+ *  on the winning side once played. */
+function ComebackLeague({ match, played, youPickId, comebackPicks, title, pointsHint }) {
   const youPill = youPickId ? [{ uid: "__you__", name: "You", me: true }] : [];
   const rows = [
     { team: match.team1, picks: [...(youPickId === match.team1?.id ? youPill : []), ...comebackPicks.team1] },
     { team: match.team2, picks: [...(youPickId === match.team2?.id ? youPill : []), ...comebackPicks.team2] },
   ].filter((row) => row.team && row.picks.length > 0);
 
-  if (rows.length === 0) return <p className="mm-calls__empty">No comeback picks for this one.</p>;
+  const header = title && (
+    <div className="mm-league-head">
+      <p className="mm-bracket-league__title">{title}</p>
+      {pointsHint != null && <span className="mm-league-pts">+{pointsHint} if correct</span>}
+    </div>
+  );
+
+  if (rows.length === 0) {
+    if (!title) return <p className="mm-calls__empty">No comeback picks for this one.</p>;
+    return (
+      <div className="mm-bracket-league mm-comeback__league">
+        {header}
+        <p className="mm-calls__empty">No one’s made a comeback pick here yet.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mm-bracket-league mm-comeback__league">
+      {header}
       {rows.map(({ team, picks }) => {
         const won = played && match.winner?.id === team.id;
         const lost = played && match.winner && match.winner.id !== team.id;
@@ -337,6 +367,10 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   );
   const comebackPicks = useMemo(
     () => (match ? friendComebackPicksForMatch(friends, slotKey, match, selfUid) : { team1: [], team2: [] }),
+    [friends, slotKey, match, selfUid]
+  );
+  const missingComeback = useMemo(
+    () => (match ? friendsMissingComebackForMatch(friends, slotKey, match, selfUid) : []),
     [friends, slotKey, match, selfUid]
   );
 
@@ -412,6 +446,12 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const comebackPickId = comebackEligible ? getMatchdayPick(scoreSource, slotKey) : null;
   const deadBracketTeam = comebackEligible ? (teamById?.get(bracketPickId) ?? null) : null;
   const canEditComeback = comebackEligible && upcoming && !!onSaveMatchdayPick && !!slotKey;
+  // Social list on the left: show whenever anyone (friends or you) has re-picked
+  // a winner here because their bracket team is out.
+  const showComebackLeague =
+    allowComeback &&
+    !!match?.isKnockout &&
+    (comebackPicks.team1.length > 0 || comebackPicks.team2.length > 0 || !!comebackPickId);
 
   const handleComebackPick = async (teamId) => {
     const next = comebackPickId === teamId ? null : teamId; // tap the current pick again to clear
@@ -457,14 +497,8 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
         </div>
 
         <div className="mm-grid">
-          {/* LEFT — match info + timeline */}
-          <div className="mm-card">
-            <p className="mm-card__title">Match</p>
-            <div className="mm-meta">
-              {match.kickoff && <span><span className="mdi mdi-clock-outline" /> {fmtKickoff(match.kickoff)}</span>}
-              {match.ground && <span><span className="mdi mdi-map-marker-outline" /> {match.ground}</span>}
-            </div>
-            <GoalTimeline match={match} />
+          {/* LEFT — member details first (who picked what), match detail below */}
+          <div className="mm-card mm-card--picks">
             {bracketPickTeam && (
               <div className="mm-bracket-pick">
                 <span className="mm-bracket-pick__label">Your bracket pick:</span>
@@ -482,12 +516,119 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 </span>
               </div>
             )}
-            <BracketPicksLeague match={match} bracketPicks={bracketPicks} played={played} />
+
+            <BracketPicksLeague
+              match={match}
+              bracketPicks={bracketPicks}
+              played={played}
+              pointsHint={roundPointsForSlot(slotKey)}
+            />
+
+            {/* Who else re-picked a winner because their bracket team is out */}
+            {showComebackLeague && (
+              <ComebackLeague
+                title="League comeback picks"
+                pointsHint={MATCHDAY_PICK_POINTS}
+                match={match}
+                played={played}
+                youPickId={comebackPickId}
+                comebackPicks={comebackPicks}
+              />
+            )}
+
+            {/* Still to pick a comeback — so you can nudge friends whose team is out */}
+            {allowComeback && upcoming && missingComeback.length > 0 && (
+              <div className="mm-missing mm-missing--comeback">
+                <p className="mm-missing__label">Still to pick a comeback ({missingComeback.length})</p>
+                <p className="mm-missing__names">{missingComeback.map((f) => f.name).join(", ")}</p>
+              </div>
+            )}
+
+            {/* Match detail — venue, time, goals — lowest priority, sits at the bottom */}
+            <div className="mm-matchinfo">
+              <p className="mm-card__title">Match detail</p>
+              <div className="mm-meta">
+                {match.kickoff && <span><span className="mdi mdi-clock-outline" /> {fmtKickoff(match.kickoff)}</span>}
+                {match.ground && <span><span className="mdi mdi-map-marker-outline" /> {match.ground}</span>}
+              </div>
+              <GoalTimeline match={match} />
+            </div>
           </div>
 
-          {/* RIGHT — score calls */}
+          {/* RIGHT — your calls: your comeback winner pick (when your team is out) + score calls */}
           {teamsConfirmed && (
-            <div className="mm-card">
+            <div className="mm-calls-col">
+              {comebackEligible && (
+                <div className="mm-card mm-comeback-card">
+                  <div className="mm-card__head">
+                    <p className="mm-card__title">Comeback pick</p>
+                    <span className="mm-card__hint">+{MATCHDAY_PICK_POINTS} if correct</span>
+                  </div>
+
+                  <p className="mm-comeback__note">
+                    {deadBracketTeam ? (
+                      <span className="mm-comeback__dead">
+                        <img src={flagSrc(deadBracketTeam.iso2, 40)} alt="" />
+                        {deadBracketTeam.code}
+                      </span>
+                    ) : (
+                      <span className="mm-comeback__dead">Your bracket pick</span>
+                    )}{" "}
+                    is out of this game —{" "}
+                    {canEditComeback
+                      ? "back a new winner to keep scoring it."
+                      : "your replacement winner for it."}
+                  </p>
+
+                  {canEditComeback ? (
+                    <div className="mm-comeback__choices">
+                      {[match.team1, match.team2].map((team) => {
+                        const selected = comebackPickId === team.id;
+                        return (
+                          <button
+                            key={team.id}
+                            type="button"
+                            onClick={() => handleComebackPick(team.id)}
+                            className={["mm-comeback__choice", selected && "mm-comeback__choice--selected"].filter(Boolean).join(" ")}
+                            aria-pressed={selected}
+                          >
+                            <img src={flagSrc(team.iso2, 40)} alt="" />
+                            <span className="mm-comeback__choice-name">{team.name}</span>
+                            <span className="mm-comeback__choice-tick">
+                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : `+${MATCHDAY_PICK_POINTS}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : comebackPickId ? (
+                    (() => {
+                      const myTeam = comebackPickId === match.team1?.id ? match.team1 : match.team2;
+                      const won = played && match.winner?.id === comebackPickId;
+                      return (
+                        <div
+                          className={[
+                            "mm-comeback__mine",
+                            played && (won ? "mm-comeback__mine--hit" : "mm-comeback__mine--miss"),
+                          ].filter(Boolean).join(" ")}
+                        >
+                          <img src={flagSrc(myTeam.iso2, 40)} alt="" />
+                          <span className="mm-comeback__choice-name">{myTeam.name}</span>
+                          {played ? (
+                            <span className="mm-comeback__mine-pts">{won ? `+${MATCHDAY_PICK_POINTS}` : "0"}</span>
+                          ) : (
+                            <span className="mm-comeback__choice-tick">your pick</span>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <p className="mm-calls__empty">No comeback pick made.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="mm-card">
               <div className="mm-card__head">
                 <p className="mm-card__title">{played ? "Score calls — graded" : "Score calls"}</p>
                 <span className="mm-card__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{SCORE_EXACT_POINTS}</span>
@@ -597,57 +738,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                   </p>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* COMEBACK PICK — bracket team is out; re-pick a winner for +10 */}
-          {comebackEligible && (
-            <div className="mm-card mm-comeback">
-              <div className="mm-card__head">
-                <p className="mm-card__title">Comeback pick</p>
-                <span className="mm-card__hint">+{MATCHDAY_PICK_POINTS} if correct</span>
               </div>
-
-              <p className="mm-comeback__note">
-                Your bracket pick{" "}
-                {deadBracketTeam ? (
-                  <span className="mm-comeback__dead">
-                    <img src={flagSrc(deadBracketTeam.iso2, 40)} alt="" />
-                    {deadBracketTeam.code}
-                  </span>
-                ) : (
-                  "for this slot"
-                )}{" "}
-                is out of this game.{canEditComeback ? " Pick a winner to stay in it." : ""}
-              </p>
-
-              {canEditComeback ? (
-                <div className="mm-comeback__choices">
-                  {[match.team1, match.team2].map((team) => {
-                    const selected = comebackPickId === team.id;
-                    return (
-                      <button
-                        key={team.id}
-                        type="button"
-                        onClick={() => handleComebackPick(team.id)}
-                        className={["mm-comeback__choice", selected && "mm-comeback__choice--selected"].filter(Boolean).join(" ")}
-                        aria-pressed={selected}
-                      >
-                        <img src={flagSrc(team.iso2, 40)} alt="" />
-                        <span className="mm-comeback__choice-name">{team.name}</span>
-                        {selected && <span className="mdi mdi-check" aria-hidden="true" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <ComebackLeague
-                  match={match}
-                  played={played}
-                  youPickId={comebackPickId}
-                  comebackPicks={comebackPicks}
-                />
-              )}
             </div>
           )}
         </div>

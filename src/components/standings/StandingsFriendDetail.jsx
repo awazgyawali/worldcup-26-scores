@@ -61,6 +61,18 @@ function CompactPredictionRow({ event }) {
             )}
           </span>
         )}
+        {event.comebackTeam && (
+          <span className="standings-m-pred__comeback">
+            ↩
+            <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-m-pred__flag-sm" />
+            {event.comebackTeam.code}
+            {event.played && (
+              <span className={event.comebackCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
+                {event.comebackCorrect ? "✓" : "✕"}
+              </span>
+            )}
+          </span>
+        )}
       </div>
       <div className="standings-m-pred__score">
         <ScoreCall
