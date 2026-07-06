@@ -1055,3 +1055,143 @@
     height: 1.3rem;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   POPUP MATCH MODAL — desktop. The modal is wide (max-w-5xl), so give the two
+   columns real breathing room and space the components out for readability.
+   Scoped to `.mm-scroll` (the modal's scroll container) so the inline Matchday
+   detail is untouched.
+   --------------------------------------------------------------------------- */
+@media (min-width: 720px) {
+  .mm-scroll .mm-scoreline {
+    gap: 1rem;
+    padding: 1.15rem 1.5rem 0.9rem;
+  }
+
+  .mm-scroll .mm-team__name {
+    font-size: 1rem;
+  }
+
+  .mm-scroll .mm-team__flag {
+    width: 2.7rem;
+    height: 1.95rem;
+  }
+
+  .mm-scroll .mm-center__score {
+    font-size: 1.9rem;
+  }
+
+  .mm-scroll .mm-grid {
+    grid-template-columns: 1fr 1.1fr;
+    gap: 1.5rem;
+    padding: 0.5rem 1.5rem 1.5rem;
+  }
+
+  .mm-scroll .mm-card {
+    padding: 1.1rem 1.25rem;
+    border-radius: 0.75rem;
+  }
+
+  .mm-scroll .mm-card + .mm-card,
+  .mm-scroll .mm-calls-col > .mm-card + .mm-card {
+    margin-top: 1rem;
+  }
+
+  .mm-scroll .mm-card__title {
+    font-size: 0.6875rem;
+    letter-spacing: 0.13em;
+    margin-bottom: 0.65rem;
+  }
+
+  .mm-scroll .mm-card__hint {
+    font-size: 0.6875rem;
+  }
+
+  .mm-scroll .mm-calls {
+    gap: 0.55rem;
+  }
+
+  .mm-scroll .mm-call-row {
+    padding: 0.55rem 0.7rem;
+  }
+
+  .mm-scroll .mm-bracket-pick {
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+  }
+
+  .mm-scroll .mm-bracket-league {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+  }
+
+  .mm-scroll .mm-bracket-league__title {
+    font-size: 0.8125rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.6rem;
+  }
+
+  .mm-scroll .mm-bracket-league__row {
+    padding: 0.4rem 0.15rem;
+  }
+
+  .mm-scroll .mm-bracket-league__team {
+    font-size: 0.9375rem;
+  }
+
+  .mm-scroll .mm-bracket-league__team img {
+    width: 1.6rem;
+    height: 1.1rem;
+  }
+
+  .mm-scroll .mm-bracket-league__pill {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .mm-scroll .mm-league-pts {
+    font-size: 0.75rem;
+  }
+
+  .mm-scroll .mm-meta {
+    font-size: 0.75rem;
+    gap: 0.35rem 0.85rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .mm-scroll .mm-matchinfo {
+    margin-top: 1.15rem;
+    padding-top: 1rem;
+  }
+
+  .mm-scroll .mm-timeline {
+    gap: 0.45rem;
+  }
+
+  .mm-scroll .mm-missing {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+  }
+
+  /* Comeback selection card */
+  .mm-scroll .mm-comeback-card .mm-comeback__note {
+    font-size: 0.8125rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .mm-scroll .mm-comeback__choices {
+    gap: 0.55rem;
+  }
+
+  .mm-scroll .mm-comeback__choice,
+  .mm-scroll .mm-comeback__mine {
+    padding: 0.75rem 0.9rem;
+    font-size: 0.9375rem;
+  }
+
+  .mm-scroll .mm-comeback__choice img,
+  .mm-scroll .mm-comeback__mine img {
+    width: 1.85rem;
+    height: 1.3rem;
+  }
+}
