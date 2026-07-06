@@ -340,6 +340,88 @@
   color: var(--wrong);
 }
 
+.mm-bracket-league {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+}
+
+.mm-bracket-league__title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mm-bracket-league__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.mm-bracket-league__team {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 3.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mm-bracket-league__team img {
+  width: 1.15rem;
+  height: 0.85rem;
+  object-fit: cover;
+  border-radius: 0.15rem;
+}
+
+.mm-bracket-league__row--right .mm-bracket-league__team {
+  color: var(--agree);
+}
+
+.mm-bracket-league__row--wrong .mm-bracket-league__team {
+  color: var(--wrong);
+}
+
+.mm-bracket-league__names {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.mm-bracket-league__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in oklch, var(--bg-elevated) 88%, var(--text-primary) 12%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mm-bracket-league__row--right .mm-bracket-league__pill {
+  border-color: color-mix(in oklch, var(--agree) 35%, var(--border-strong));
+  background: color-mix(in oklch, var(--agree) 12%, var(--bg-elevated));
+  color: var(--agree);
+}
+
+.mm-bracket-league__row--wrong .mm-bracket-league__pill {
+  border-color: color-mix(in oklch, var(--wrong) 30%, var(--border-strong));
+  background: color-mix(in oklch, var(--wrong) 10%, var(--bg-elevated));
+  color: color-mix(in oklch, var(--wrong) 85%, var(--text-secondary));
+}
+
 /* score calls */
 .mm-calls {
   display: flex;

@@ -6,6 +6,7 @@ import { isRef } from "../../lib/teams";
 import {
   friendScorePredictionsForMatch,
   friendsMissingScorePredictionForMatch,
+  friendBracketPicksForMatch,
   getScorePrediction,
   gradeScorePrediction,
   mapPredictedScores,
@@ -216,6 +217,49 @@ function initials(name) {
   return name.trim().slice(0, 2).toUpperCase();
 }
 
+function BracketPicksLeague({ match, bracketPicks, played }) {
+  const rows = [
+    { team: match.team1, picks: bracketPicks.team1 },
+    { team: match.team2, picks: bracketPicks.team2 },
+  ].filter((row) => row.picks.length > 0);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="mm-bracket-league">
+      <p className="mm-bracket-league__title">League bracket picks</p>
+      {rows.map(({ team, picks }) => {
+        const won = played && match.winner?.id === team.id;
+        const lost = played && match.winner && match.winner.id !== team.id;
+        return (
+          <div
+            key={team.id}
+            className={[
+              "mm-bracket-league__row",
+              won && "mm-bracket-league__row--right",
+              lost && "mm-bracket-league__row--wrong",
+            ].filter(Boolean).join(" ")}
+          >
+            <span className="mm-bracket-league__team">
+              <img src={flagSrc(team.iso2, 40)} alt="" />
+              {team.code}
+              {won && <span className="mdi mdi-check" aria-hidden="true" />}
+              {lost && <span className="mdi mdi-close" aria-hidden="true" />}
+            </span>
+            <span className="mm-bracket-league__names">
+              {picks.map((p) => (
+                <span key={p.uid} className="mm-bracket-league__pill">
+                  {p.name}
+                </span>
+              ))}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // MATCH DETAIL BODY — reusable scoreline + timeline + score calls. Used inside
 // the modal (other tabs) and inline in the Matchday master-detail pane.
@@ -232,6 +276,10 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   );
   const missingPredictions = useMemo(
     () => (match ? friendsMissingScorePredictionForMatch(friends, slotKey, match, selfUid) : []),
+    [friends, slotKey, match, selfUid]
+  );
+  const bracketPicks = useMemo(
+    () => (match ? friendBracketPicksForMatch(friends, slotKey, match, selfUid) : { team1: [], team2: [] }),
     [friends, slotKey, match, selfUid]
   );
 
@@ -364,6 +412,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 </span>
               </div>
             )}
+            <BracketPicksLeague match={match} bracketPicks={bracketPicks} played={played} />
           </div>
 
           {/* RIGHT — score calls */}

@@ -96,6 +96,30 @@ export function friendsMissingScorePredictionForMatch(friends, scoreKey, match, 
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Friends' bracket winner picks for a knockout fixture, grouped by team.
+ *  Only includes picks where the chosen team is actually playing in this match. */
+export function friendBracketPicksForMatch(friends, slotKey, match, excludeUid) {
+  const empty = { team1: [], team2: [] };
+  if (!slotKey || slotKey.startsWith("rail-") || !match?.isKnockout || !match?.team1 || !match?.team2) {
+    return empty;
+  }
+
+  const team1 = [];
+  const team2 = [];
+  for (const f of friends) {
+    if (!f.name || f.uid === excludeUid) continue;
+    const pickId = f.winners?.[slotKey];
+    if (!pickId) continue;
+    if (pickId === match.team1.id) team1.push({ uid: f.uid, name: f.name });
+    else if (pickId === match.team2.id) team2.push({ uid: f.uid, name: f.name });
+  }
+
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  team1.sort(byName);
+  team2.sort(byName);
+  return { team1, team2 };
+}
+
 export function formatScorePredictionDisplay(scorePrediction, match) {
   if (!scorePrediction || !match?.team1 || !match?.team2) return null;
   const [a, b] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);
