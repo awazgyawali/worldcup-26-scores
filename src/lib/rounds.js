@@ -10,6 +10,17 @@ export const ROUNDS = [
 ];
 export const FINAL_ROUND = ROUNDS.length - 1;
 export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 15, num: 103 };
+
+// Exact-score prediction points, by knockout round. Falls back to
+// SCORE_EXACT_POINTS (scoring.js) for group-stage ("rail-") matches.
+export const SCORE_EXACT_POINTS_BY_ROUND = {
+  r32: 10,
+  r16: 20,
+  qf: 30,
+  sf: 40,
+  final: 50,
+  third: 30,
+};
 export const key = (r, m) => `${r}-${m}`;
 /** Every knockout slot the user must fill before locking. */
 export const REQUIRED_PICK_KEYS = [

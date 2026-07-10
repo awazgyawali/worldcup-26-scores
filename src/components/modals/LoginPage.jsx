@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IconGoogle, IconMail, BrandBadge } from "../common/icons";
-import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
-import { SCORE_ONE_SIDE_POINTS, SCORE_EXACT_POINTS } from "../../lib/scoring";
+import { ROUNDS, THIRD_PLACE, SCORE_EXACT_POINTS_BY_ROUND } from "../../lib/rounds";
+import { SCORE_ONE_SIDE_POINTS } from "../../lib/scoring";
 
 function fmtPts(n) {
   return n === 1 ? "1 pt" : `${n} pts`;
@@ -14,13 +14,16 @@ const SCORE_TILES = [
     desc: "Either team's score",
     points: SCORE_ONE_SIDE_POINTS,
   },
-  {
-    key: "exact",
-    label: "Both sides",
-    desc: "Exact final score",
-    points: SCORE_EXACT_POINTS,
-    featured: true,
-  },
+];
+
+/** Exact-score bonus scales with round, same shape as bracket pick rows. */
+const EXACT_SCORE_ROWS = [
+  ...ROUNDS.filter((r) => r.key !== "final").map((r) => ({
+    label: `${r.short} exact`,
+    points: SCORE_EXACT_POINTS_BY_ROUND[r.key],
+  })),
+  { label: "3rd place exact", points: SCORE_EXACT_POINTS_BY_ROUND.third },
+  { label: "Final exact", points: SCORE_EXACT_POINTS_BY_ROUND.final, highlight: true },
 ];
 
 function BrandPanel({ onShowRules, scoringRows, scoreTiles = SCORE_TILES }) {
@@ -68,6 +71,19 @@ function BrandPanel({ onShowRules, scoringRows, scoreTiles = SCORE_TILES }) {
             </div>
           ))}
         </div>
+
+        <p className="login-brand__scoring-title login-brand__scoring-title--score">Both sides (exact) · by round</p>
+        <div className="login-brand__scoring-grid">
+          {EXACT_SCORE_ROWS.map((row) => (
+            <div
+              key={row.label}
+              className={["login-brand__scoring-row", row.highlight && "login-brand__scoring-row--highlight"].filter(Boolean).join(" ")}
+            >
+              <span>{row.label}</span>
+              <span className="login-brand__scoring-pts">{row.points}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <button type="button" onClick={onShowRules} className="login-brand__rules">
@@ -108,7 +124,7 @@ export function LoginPage({
     { label: "Round of 16", val: ROUNDS.find((r) => r.key === "r16")?.points ?? 10 },
     { label: "Champion", val: ROUNDS.find((r) => r.key === "final")?.points ?? 60 },
     { label: "One side", val: SCORE_ONE_SIDE_POINTS },
-    { label: "Both sides", val: SCORE_EXACT_POINTS },
+    { label: "Final exact", val: SCORE_EXACT_POINTS_BY_ROUND.final },
   ];
 
   const resetMessages = () => {
@@ -507,6 +523,22 @@ function RulesPanel({ onBack }) {
               </span>
               <span className="text-xs font-bold text-[var(--text-primary)]">{tile.label}</span>
               <span className="text-[10px] text-[var(--text-muted)]">{tile.desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-[var(--text-muted)]">Both sides (exact) · by round</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {EXACT_SCORE_ROWS.map((row) => (
+            <div
+              key={row.label}
+              className={[
+                "rounded p-2",
+                row.highlight ? "bg-[var(--gold)]/10 border border-[var(--gold)]/35" : "bg-[var(--bg-elevated)]",
+              ].join(" ")}
+            >
+              <span className="text-[var(--pitch-glow)]">{row.label}</span>
+              <span className="float-right font-bold">{fmtPts(row.points)}</span>
             </div>
           ))}
         </div>

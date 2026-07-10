@@ -1,4 +1,4 @@
-import { ROUNDS, THIRD_PLACE, key } from "./rounds";
+import { ROUNDS, THIRD_PLACE, key, SCORE_EXACT_POINTS_BY_ROUND } from "./rounds";
 import { isMatchScorable, getMatchTeams, getThirdPlaceTeams } from "./bracket";
 
 // ----------------------------------------------------------------------------
@@ -79,7 +79,7 @@ export function friendScorePredictionsForMatch(friends, scoreKey, match, exclude
       if (!raw) return null;
       const [a, b] = mapPredictedScores(raw, match.team1, match.team2, match);
       if (a == null || b == null) return null;
-      const points = graded ? gradeScorePrediction(raw, match.ftScore).scorePoints : 0;
+      const points = graded ? gradeScorePrediction(raw, match.ftScore, scoreKey).scorePoints : 0;
       return { uid: f.uid, name: f.name, display: `${a}–${b}`, home: a, away: b, points };
     })
     .filter(Boolean)
@@ -164,19 +164,28 @@ export function normalizeScores(winners, teams) {
 }
 
 /** Score prediction points:
- *  - One side correct: 5 points
- *  - Both sides correct (exact score): 20 points
+ *  - One side correct: 5 points (flat, every round)
+ *  - Both sides correct (exact score): varies by knockout round, see
+ *    SCORE_EXACT_POINTS_BY_ROUND. Falls back to SCORE_EXACT_POINTS for
+ *    group-stage ("rail-") matches, which aren't tied to a knockout round.
  */
 export const SCORE_ONE_SIDE_POINTS = 5;
 export const SCORE_EXACT_POINTS = 20;
 
-export function gradeScorePrediction(predictedScore, ftScore) {
+/** Exact-score points for a slot, based on its knockout round. */
+export function getScoreExactPoints(slotKey) {
+  if (!slotKey) return SCORE_EXACT_POINTS;
+  const roundKey = slotKey.replace(/-\d+$/, "");
+  return SCORE_EXACT_POINTS_BY_ROUND[roundKey] ?? SCORE_EXACT_POINTS;
+}
+
+export function gradeScorePrediction(predictedScore, ftScore, slotKey = null) {
   if (!predictedScore || !ftScore) return { scoreResult: null, scorePoints: 0 };
   const side1Correct = predictedScore[0] === ftScore[0];
   const side2Correct = predictedScore[1] === ftScore[1];
   const bothCorrect = side1Correct && side2Correct;
   const oneSideCorrect = (side1Correct || side2Correct) && !bothCorrect;
-  if (bothCorrect) return { scoreResult: "exact", scorePoints: SCORE_EXACT_POINTS };
+  if (bothCorrect) return { scoreResult: "exact", scorePoints: getScoreExactPoints(slotKey) };
   if (oneSideCorrect) return { scoreResult: "oneside", scorePoints: SCORE_ONE_SIDE_POINTS };
   return { scoreResult: null, scorePoints: 0 };
 }
@@ -323,8 +332,8 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
       // Grade score prediction on the real fixture (90-min), independent of bracket winner pick
       const predictedScore = getScorePrediction(winners, k);
       if (predictedScore && match?.ftScore) {
-        const { scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore);
-        if (sp === SCORE_EXACT_POINTS) {
+        const { scorePoints: sp, scoreResult } = gradeScorePrediction(predictedScore, match.ftScore, k);
+        if (scoreResult === "exact") {
           byRound[r.key].scoreExact++;
           scoreExact++;
           scorePoints += sp;
@@ -396,7 +405,7 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
   let scoreResult = null;
   let scoreDisplay = predictedScore ? formatScorePredictionDisplay(predictedScore, match) : null;
   if (played && predictedScore && match.ftScore) {
-    const graded = gradeScorePrediction(predictedScore, match.ftScore);
+    const graded = gradeScorePrediction(predictedScore, match.ftScore, slotKey);
     scorePts = graded.scorePoints;
     scoreResult = graded.scoreResult;
   }
@@ -500,7 +509,7 @@ export function getMatchPredictionInfo(winners, match, slotKey, isKnockout, roun
   }
 
   if (scorable && match.status === "played" && predictedScore && match.ftScore) {
-    const { scoreResult: sr, scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore);
+    const { scoreResult: sr, scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore, pickKey);
     scoreResult = sr;
     scorePointsEarned = sp;
   }

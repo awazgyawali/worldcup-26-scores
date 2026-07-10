@@ -15,7 +15,7 @@ import {
   gradeScorePrediction,
   mapPredictedScores,
   SCORE_ONE_SIDE_POINTS,
-  SCORE_EXACT_POINTS,
+  getScoreExactPoints,
   MATCHDAY_PICK_POINTS,
 } from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
@@ -438,8 +438,9 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const [yourA, yourB] = mapPredictedScores(scorePrediction, match.team1, match.team2, match);
   const yourPoints =
     played && scorePrediction && match.ftScore
-      ? gradeScorePrediction(scorePrediction, match.ftScore).scorePoints
+      ? gradeScorePrediction(scorePrediction, match.ftScore, slotKey).scorePoints
       : 0;
+  const exactPoints = getScoreExactPoints(slotKey);
   const actualFtScore = match.ftScore ?? match.score;
   const teamsConfirmed = !!match.team1 && !!match.team2;
 
@@ -639,7 +640,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
               <div className="mm-card">
               <div className="mm-card__head">
                 <p className="mm-card__title">{played ? "Score calls — graded" : "Score calls"}</p>
-                <span className="mm-card__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{SCORE_EXACT_POINTS}</span>
+                <span className="mm-card__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{exactPoints}</span>
               </div>
 
               <div className="mm-calls">
@@ -651,7 +652,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                       : [
                           "mm-call-row",
                           canEditScore && hasScorePrediction && "mm-call-row--you",
-                          played && yourPoints === SCORE_EXACT_POINTS && "mm-call-row--exact",
+                          played && yourPoints === exactPoints && "mm-call-row--exact",
                         ].filter(Boolean).join(" ")
                   }
                 >
@@ -666,7 +667,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                   </span>
                   <span className="mm-call-row__name">
                     You
-                    {played && yourPoints === SCORE_EXACT_POINTS && <span className="mm-nailed">NAILED IT</span>}
+                    {played && yourPoints === exactPoints && <span className="mm-nailed">NAILED IT</span>}
                   </span>
                   {showScoreInputs ? (
                     <span className="mm-call-row__edit">
@@ -728,12 +729,12 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 {otherPredictions.map((entry) => (
                   <div
                     key={entry.uid}
-                    className={["mm-call-row", played && entry.points === SCORE_EXACT_POINTS && "mm-call-row--exact"].filter(Boolean).join(" ")}
+                    className={["mm-call-row", played && entry.points === exactPoints && "mm-call-row--exact"].filter(Boolean).join(" ")}
                   >
                     <span className="mm-call-row__avatar">{initials(entry.name)}</span>
                     <span className="mm-call-row__name">
                       {entry.name}
-                      {played && entry.points === SCORE_EXACT_POINTS && <span className="mm-nailed">NAILED IT</span>}
+                      {played && entry.points === exactPoints && <span className="mm-nailed">NAILED IT</span>}
                     </span>
                     <span className="mm-call-row__score">
                       <ScoreNumbers a={entry.home} b={entry.away} ftScore={actualFtScore} graded={played} />

@@ -219,11 +219,11 @@ function LockBanner({ title, sub, buttonLabel, onAction }) {
   );
 }
 
-function ScheduleRailCard({ m, isNext, selected, prediction, comebackEligible, comebackTeam, onSelect }) {
+function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEligible, comebackTeam, onSelect }) {
   const played = m.status === "played";
   const live = m.status === "live";
   const { scoreResult, scorePoints } = played && prediction && m.ftScore
-    ? gradeScorePrediction(prediction, m.ftScore)
+    ? gradeScorePrediction(prediction, m.ftScore, slotKey)
     : { scoreResult: null, scorePoints: 0 };
   const chip = callChip({ prediction, played, scorePoints, scoreResult, isNext: isNext && !live && !played });
   const comebackWon = played && comebackTeam && m.winner?.id === comebackTeam.id;
@@ -346,6 +346,7 @@ function MatchSchedule({
               <ScheduleRailCard
                 key={m.num}
                 m={m}
+                slotKey={slotKey}
                 isNext={isNext}
                 selected={m.num === selectedNum}
                 prediction={prediction}

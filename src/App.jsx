@@ -26,8 +26,6 @@ import {
   normalizeScores,
   gradeScorePrediction,
   gradeWinners,
-  SCORE_ONE_SIDE_POINTS,
-  SCORE_EXACT_POINTS,
 } from "./lib/scoring";
 import { fmtCountdown, fmtTimeOnly } from "./lib/format";
 
@@ -415,11 +413,11 @@ export default function App() {
 
       const predictedScore = displayWinners[key + SCORE_SUFFIX];
       if (predictedScore && match.ftScore) {
-        const { scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore);
-        if (sp === SCORE_EXACT_POINTS) {
+        const { scorePoints: sp, scoreResult } = gradeScorePrediction(predictedScore, match.ftScore, key);
+        if (scoreResult === "exact") {
           scoreExact++;
           scorePoints += sp;
-        } else if (sp === SCORE_ONE_SIDE_POINTS) {
+        } else if (scoreResult === "oneside") {
           scoreOneSide++;
           scorePoints += sp;
         }
@@ -458,11 +456,11 @@ export default function App() {
 
             const predictedScore = friend.winners[key + SCORE_SUFFIX];
             if (predictedScore && match.ftScore) {
-              const { scorePoints: sp } = gradeScorePrediction(predictedScore, match.ftScore);
-              if (sp === SCORE_EXACT_POINTS) {
+              const { scorePoints: sp, scoreResult } = gradeScorePrediction(predictedScore, match.ftScore, key);
+              if (scoreResult === "exact") {
                 railScoreExact++;
                 railScorePoints += sp;
-              } else if (sp === SCORE_ONE_SIDE_POINTS) {
+              } else if (scoreResult === "oneside") {
                 railScoreOneSide++;
                 railScorePoints += sp;
               }

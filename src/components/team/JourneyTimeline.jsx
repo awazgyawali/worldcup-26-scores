@@ -1,7 +1,7 @@
 import { Countdown } from "../common/Countdown";
 import { buildJourneyTimeline, journeyResult, JOURNEY_RESULT_LABEL } from "./journeyHelpers";
 import { flagSrc, fmtKickoff, liveMinute } from "../../lib/format";
-import { friendScorePredictionsForMatch, getScorePrediction, gradeScorePrediction, mapPredictedScores, SCORE_ONE_SIDE_POINTS, SCORE_EXACT_POINTS } from "../../lib/scoring";
+import { friendScorePredictionsForMatch, getScorePrediction, gradeScorePrediction, mapPredictedScores, SCORE_ONE_SIDE_POINTS, getScoreExactPoints } from "../../lib/scoring";
 import { key } from "../../lib/rounds";
 
 function callInitials(name) {
@@ -37,7 +37,7 @@ function LeagueCallsPanel({ entry, team, friends, numToSlot, selfUid }) {
         name: "You",
         home: selfHome,
         away: selfAway,
-        points: graded ? gradeScorePrediction(selfRaw, entry.ftScore).scorePoints : 0,
+        points: graded ? gradeScorePrediction(selfRaw, entry.ftScore, slotKey).scorePoints : 0,
         isSelf: true,
       }
     : null;
@@ -50,11 +50,11 @@ function LeagueCallsPanel({ entry, team, friends, numToSlot, selfUid }) {
     <div className="journey-side-panel journey-side-panel--wide">
       <div className="journey-side-panel__head">
         <span className="journey-side-panel__title">League calls on this one</span>
-        {graded && <span className="journey-side-panel__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{SCORE_EXACT_POINTS}</span>}
+        {graded && <span className="journey-side-panel__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{getScoreExactPoints(slotKey)}</span>}
       </div>
       <div className="journey-calls">
         {all.map((p) => {
-          const exact = graded && p.points >= SCORE_EXACT_POINTS;
+          const exact = graded && p.points >= getScoreExactPoints(slotKey);
           return (
             <div
               key={p.uid}
