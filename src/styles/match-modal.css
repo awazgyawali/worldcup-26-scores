@@ -194,6 +194,7 @@
   padding: 0.55rem 0.65rem;
 }
 
+
 .mm-card__head {
   display: flex;
   align-items: baseline;
@@ -660,6 +661,11 @@
   line-height: 1.6;
 }
 
+.mm-missing--comeback .mm-missing__names,
+.mm-missing--path .mm-missing__names {
+  color: var(--wrong);
+}
+
 /* footer nav */
 .mm-footer {
   display: flex;
@@ -867,6 +873,13 @@
   margin-bottom: 0.5rem;
 }
 
+.mm-score-note {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin: 0.2rem 0 0.55rem;
+}
+
 .mm-comeback__dead {
   display: inline-flex;
   align-items: center;
@@ -957,8 +970,138 @@
   color: var(--pitch-glow);
 }
 
+/* Path call — wager on regulation/ET/pens, amber accent to read as a side-bet,
+   distinct from the blue comeback-pick card. */
+.mm-path-card {
+  border-left: 2px solid color-mix(in oklch, var(--predict) 55%, transparent);
+}
+
+.mm-path__note {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.mm-path__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mm-path__choice {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.mm-path__choice-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-path__choice-tick {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.mm-path__choice:hover {
+  border-color: color-mix(in oklch, var(--predict) 45%, var(--border-strong));
+  color: var(--text-primary);
+}
+
+.mm-path__choice--selected {
+  border-color: var(--predict);
+  background: var(--predict-dim);
+  color: var(--predict-bright);
+}
+
+.mm-path__choice--selected .mm-path__choice-tick,
+.mm-path__choice .mdi-check {
+  color: var(--predict-bright);
+  font-weight: 900;
+}
+
+/* "Won't risk it" opt-out — deliberately neutral/gray, never amber, so it
+   never reads as a wager choice. */
+.mm-path__choice--skip {
+  border-style: dashed;
+}
+
+.mm-path__choice--skip.mm-path__choice--selected {
+  border-color: var(--border-strong);
+  border-style: solid;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.mm-path__choice--skip.mm-path__choice--selected .mm-path__choice-tick {
+  color: var(--text-secondary);
+}
+
+.mm-path__mine {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--predict);
+  background: var(--predict-dim);
+  color: var(--predict-bright);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.mm-path__mine-pts {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.mm-path__mine--hit {
+  border-color: color-mix(in oklch, var(--agree) 55%, var(--border-strong));
+  background: color-mix(in oklch, var(--agree) 12%, var(--bg-elevated));
+  color: var(--agree);
+}
+
+.mm-path__mine--hit .mm-path__mine-pts {
+  color: var(--agree);
+}
+
+.mm-path__mine--miss {
+  border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
+  background: color-mix(in oklch, var(--wrong) 10%, var(--bg-elevated));
+  color: color-mix(in oklch, var(--wrong) 85%, var(--text-secondary));
+}
+
+.mm-path__mine--miss .mm-path__mine-pts {
+  color: var(--wrong);
+}
+
+.mm-path__mine--skip {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
 /* "Still to pick a comeback" nudge list */
-.mm-missing--comeback {
+.mm-missing--comeback,
+.mm-missing--path {
   margin-top: 0.7rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--border-strong);
@@ -1046,7 +1189,8 @@
     padding-top: 1rem;
   }
 
-  .matchday-desktop-detail .mm-missing--comeback {
+  .matchday-desktop-detail .mm-missing--comeback,
+  .matchday-desktop-detail .mm-missing--path {
     margin-top: 0.9rem;
     padding-top: 0.9rem;
   }
@@ -1211,5 +1355,57 @@
   .mm-scroll .mm-comeback__mine img {
     width: 1.85rem;
     height: 1.3rem;
+  }
+}
+
+/* "You still need to pick" attention ring — the card's own border lit up with a
+   spinning gradient, so an unmade comeback/path call doesn't get lost among
+   already-resolved cards. Two background layers (no pseudo-element, no mask):
+   a solid padding-box layer on top for the card's real fill, and a rotating
+   conic-gradient border-box layer underneath that only peeks through the
+   2px border band — so the glow reads as the card's outline, not a floating
+   ring drawn separately from it. Placed last in the cascade so it wins over
+   .mm-comeback-card / .mm-path-card's own accent border-left. */
+@property --mm-needs-pick-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.mm-card--needs-pick {
+  --mm-needs-pick-color: var(--predict-bright);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
+    conic-gradient(
+        from var(--mm-needs-pick-angle),
+        var(--mm-needs-pick-color),
+        transparent 35%,
+        transparent 65%,
+        var(--mm-needs-pick-color)
+      )
+      border-box;
+  animation: mm-needs-pick-spin 2.4s linear infinite;
+}
+
+/* Comeback pick wagers on a team (blue), path call wagers on the game clock
+   (gold) — keep the attention ring's color matched to each card's own accent. */
+.mm-comeback-card.mm-card--needs-pick {
+  --mm-needs-pick-color: var(--pitch-glow);
+}
+
+.mm-path-card.mm-card--needs-pick {
+  --mm-needs-pick-color: var(--predict-bright);
+}
+
+@keyframes mm-needs-pick-spin {
+  to {
+    --mm-needs-pick-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-card--needs-pick {
+    animation: none;
   }
 }

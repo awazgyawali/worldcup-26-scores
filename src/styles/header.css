@@ -72,8 +72,7 @@
 }
 
 @media (max-width: 767px) {
-  .broadcast-bar__desktop-only.tab-nav,
-  .broadcast-bar__desktop-only:not(.tab-nav) {
+  .broadcast-bar__desktop-only {
     display: none !important;
   }
 }
@@ -524,17 +523,6 @@
   border: 1px solid var(--border);
 }
 
-/* Top pill tabs — desktop only (CSS handles display so utilities aren't overridden). */
-.tab-nav:not(.tab-nav--bottom) {
-  display: none;
-}
-
-@media (min-width: 768px) {
-  .tab-nav:not(.tab-nav--bottom) {
-    display: flex;
-  }
-}
-
 .tab-nav__item {
   display: inline-flex;
   align-items: center;
@@ -611,6 +599,96 @@
 .tab-nav__icon {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+/* ---------------------------------------------------------------- desktop dock (anchored to bottom) */
+.dock-nav {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: 50;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 1.1rem 1.1rem 0 0;
+  background: color-mix(in oklch, var(--bg-elevated) 96%, transparent);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1.5px solid var(--border-strong);
+  border-bottom: none;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  opacity: 0.92;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.dock-nav:hover {
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .dock-nav {
+    display: flex;
+  }
+}
+
+.dock-nav__item {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 8.75rem;
+  height: 2.5rem;
+  padding: 0 0.9rem;
+  border-radius: 0.75rem;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transform-origin: bottom center;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.18s ease;
+}
+
+.dock-nav__item:hover {
+  transform: translateY(-3px) scale(1.05);
+  color: var(--text-primary);
+}
+
+.dock-nav__item--active {
+  color: #fff;
+}
+
+.dock-nav__item--active:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.dock-nav__pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, var(--pitch), var(--pitch-glow));
+  box-shadow: 0 4px 16px rgba(47, 107, 255, 0.5), 0 0 22px rgba(91, 140, 255, 0.35);
+  z-index: 0;
+}
+
+.dock-nav__icon {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.dock-nav__label {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .viewing-as-picker__chevron {

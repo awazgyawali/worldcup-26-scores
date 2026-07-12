@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { IconBracket, IconChevronDown, IconLock, IconMatchday, IconReset, IconSignOut, IconStandings } from "../common/icons";
 import { ProviderIcon } from "../common/ProviderIcon";
 import { SignOutConfirmModal } from "../modals/SignOutConfirmModal";
@@ -107,15 +108,10 @@ const ALL_TABS = [
   { id: "standings", label: "Standings", icon: IconStandings },
 ];
 
-export function TabNav({ active, onChange, variant = "top", className = "" }) {
-  const isBottom = variant === "bottom";
-  const tabs = ALL_TABS;
+export function TabNav({ active, onChange, className = "" }) {
   return (
-    <nav
-      className={["tab-nav", isBottom && "tab-nav--bottom", className].filter(Boolean).join(" ")}
-      aria-label="Sections"
-    >
-      {tabs.map((tab) => {
+    <nav className={["tab-nav", "tab-nav--bottom", className].filter(Boolean).join(" ")} aria-label="Sections">
+      {ALL_TABS.map((tab) => {
         const Icon = tab.icon;
         return (
           <button
@@ -124,13 +120,46 @@ export function TabNav({ active, onChange, variant = "top", className = "" }) {
             onClick={() => onChange(tab.id)}
             className={[
               "tab-nav__item",
-              isBottom && "tab-nav__item--bottom",
+              "tab-nav__item--bottom",
               active === tab.id && "tab-nav__item--active",
             ].filter(Boolean).join(" ")}
             aria-current={active === tab.id ? "true" : undefined}
           >
-            {isBottom && <Icon className="tab-nav__icon" />}
+            <Icon className="tab-nav__icon" />
             <span>{tab.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+// Floating dock — desktop-only replacement for the old header pill tabs.
+// A motion.span with a shared layoutId slides between items as the active
+// tab changes, and each icon gets a hover tooltip + lift/scale on hover.
+export function DockNav({ active, onChange }) {
+  return (
+    <nav className="dock-nav" aria-label="Sections">
+      {ALL_TABS.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={["dock-nav__item", isActive && "dock-nav__item--active"].filter(Boolean).join(" ")}
+            aria-current={isActive ? "true" : undefined}
+          >
+            {isActive && (
+              <motion.span
+                layoutId="dock-nav-active-pill"
+                className="dock-nav__pill"
+                transition={{ type: "spring", stiffness: 500, damping: 34 }}
+              />
+            )}
+            <Icon className="dock-nav__icon" />
+            <span className="dock-nav__label">{tab.label}</span>
           </button>
         );
       })}

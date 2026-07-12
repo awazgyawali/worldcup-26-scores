@@ -448,11 +448,8 @@
     height: 0.78rem;
   }
 
-  .matchday-md__rail .md-rail-card__chip {
+  .matchday-md__rail .md-rail-card__calls {
     margin-top: 0.45rem;
-    padding: 0.2rem 0.55rem;
-    font-size: 0.6875rem;
-    border-radius: 0.4375rem;
   }
 
   .matchday-md__rail .md-rail-card__next-pill {
@@ -708,51 +705,57 @@
   flex-shrink: 0;
 }
 
-.md-rail-card__chip {
-  display: inline-block;
+.md-rail-card__calls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
   margin-top: 0.625rem;
-  padding: 0.3rem 0.75rem;
+}
+
+.md-rail-card__calls > * {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 1.625rem;
+  padding: 0 0.6rem;
   border-radius: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+  border: 1px solid transparent;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .md-rail-card__chip--next,
 .md-rail-card__chip--muted {
+  border-color: var(--border-strong);
   background: #26262c;
   color: var(--text-muted);
 }
 
 .md-rail-card__chip--yours {
+  border-color: color-mix(in oklch, var(--predict) 45%, var(--border-strong));
   background: var(--predict-dim);
   color: var(--predict-bright);
 }
 
 .md-rail-card__chip--hit {
+  border-color: color-mix(in oklch, var(--agree) 45%, var(--border-strong));
   background: #12271b;
   color: var(--agree);
 }
 
 .md-rail-card__chip--miss {
+  border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
   background: #2a1416;
   color: var(--wrong);
 }
 
 .md-rail-card__comeback {
-  display: inline-block;
-  margin-top: 0.4rem;
-  padding: 0.22rem 0.6rem;
-  border-radius: 0.5rem;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  border: 1px dashed color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
+  border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
   background: var(--pitch-dim);
   color: var(--pitch-glow);
-}
-
-.md-rail-card__comeback--set {
-  border-style: solid;
 }
 
 .md-rail-card__comeback--hit {
@@ -765,6 +768,30 @@
   border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
   background: #2a1416;
   color: var(--wrong);
+}
+
+.md-rail-card__path {
+  border-color: color-mix(in oklch, var(--predict) 45%, var(--border-strong));
+  background: var(--predict-dim);
+  color: var(--predict-bright);
+}
+
+.md-rail-card__path--hit {
+  border-color: color-mix(in oklch, var(--agree) 45%, var(--border-strong));
+  background: #12271b;
+  color: var(--agree);
+}
+
+.md-rail-card__path--miss {
+  border-color: color-mix(in oklch, var(--wrong) 45%, var(--border-strong));
+  background: #2a1416;
+  color: var(--wrong);
+}
+
+.md-rail-card__path--skip {
+  border-color: var(--border-strong);
+  background: #26262c;
+  color: var(--text-muted);
 }
 
 /* ---------------------------------------------------------------- schedule strip (mobile) */

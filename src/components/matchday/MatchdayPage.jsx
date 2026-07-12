@@ -4,6 +4,11 @@ import {
   gradeScorePrediction,
   getMatchdayPick,
   isComebackEligible,
+  getPathCallPick,
+  isPathCallEligible,
+  PATH_CALL_CORRECT_POINTS,
+  PATH_SKIP,
+  PATH_LABELS,
   SCORE_SUFFIX,
 } from "../../lib/scoring";
 import { flagSrc, fmtTimeOnly, fmtCountdown, liveMinute } from "../../lib/format";
@@ -66,6 +71,7 @@ function MatchdayDesktopDetail({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSavePathCallPick,
   lockTimeMs,
   teamById,
   allowComeback,
@@ -88,6 +94,7 @@ function MatchdayDesktopDetail({
         onFlagClick={onFlagClick}
         onSaveScorePrediction={onSaveScorePrediction}
         onSaveMatchdayPick={onSaveMatchdayPick}
+        onSavePathCallPick={onSavePathCallPick}
         lockTimeMs={lockTimeMs}
         teamById={teamById}
         allowComeback={allowComeback}
@@ -107,6 +114,7 @@ function MatchdayMobileView({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSavePathCallPick,
   lockTimeMs,
   teamById,
   allowComeback,
@@ -144,6 +152,7 @@ function MatchdayMobileView({
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
           onSaveMatchdayPick={onSaveMatchdayPick}
+          onSavePathCallPick={onSavePathCallPick}
           lockTimeMs={lockTimeMs}
           teamById={teamById}
           allowComeback={allowComeback}
@@ -219,7 +228,7 @@ function LockBanner({ title, sub, buttonLabel, onAction }) {
   );
 }
 
-function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEligible, comebackTeam, onSelect }) {
+function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEligible, comebackTeam, pathEligible, pathPick, onSelect }) {
   const played = m.status === "played";
   const live = m.status === "live";
   const { scoreResult, scorePoints } = played && prediction && m.ftScore
@@ -227,6 +236,9 @@ function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEl
     : { scoreResult: null, scorePoints: 0 };
   const chip = callChip({ prediction, played, scorePoints, scoreResult, isNext: isNext && !live && !played });
   const comebackWon = played && comebackTeam && m.winner?.id === comebackTeam.id;
+  const pathOutcome = played ? (m.phase === "pens" ? "pens" : m.phase === "aet" ? "aet" : m.phase === "ft" ? "reg" : null) : null;
+  const pathIsGraded = pathPick && pathPick !== PATH_SKIP;
+  const pathWon = played && pathIsGraded && pathOutcome ? pathPick === pathOutcome : null;
 
   return (
     <div data-num={m.num} className="md-rail-tile">
@@ -268,22 +280,37 @@ function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEl
             <span className="md-rail-card__team-name">{m.team2?.name ?? "TBD"}</span>
           </div>
         </div>
-        <span className={["md-rail-card__chip", `md-rail-card__chip--${chip.kind}`].join(" ")}>{chip.text}</span>
-        {comebackEligible && (
-          <span
-            className={[
-              "md-rail-card__comeback",
-              comebackTeam && "md-rail-card__comeback--set",
-              played && comebackTeam && (comebackWon ? "md-rail-card__comeback--hit" : "md-rail-card__comeback--miss"),
-            ].filter(Boolean).join(" ")}
-          >
-            {comebackTeam
-              ? played
-                ? `↩ Comeback ${comebackTeam.code} · ${comebackWon ? "+10" : "+0"}`
-                : `↩ Comeback: ${comebackTeam.code}`
-              : "↩ Comeback pick +10"}
-          </span>
-        )}
+        <div className="md-rail-card__calls">
+          <span className={["md-rail-card__chip", `md-rail-card__chip--${chip.kind}`].join(" ")}>{chip.text}</span>
+          {comebackEligible && (
+            <span
+              className={[
+                "md-rail-card__comeback",
+                comebackTeam && "md-rail-card__comeback--set",
+                played && comebackTeam && (comebackWon ? "md-rail-card__comeback--hit" : "md-rail-card__comeback--miss"),
+              ].filter(Boolean).join(" ")}
+            >
+              {comebackTeam
+                ? played
+                  ? `↩ ${comebackTeam.code} · ${comebackWon ? "+10" : "+0"}`
+                  : `↩ ${comebackTeam.code}`
+                : "↩ Comeback +10"}
+            </span>
+          )}
+          {pathEligible && pathPick && (
+            <span
+              className={[
+                "md-rail-card__path",
+                pathPick === PATH_SKIP && "md-rail-card__path--skip",
+                played && pathIsGraded && (pathWon ? "md-rail-card__path--hit" : "md-rail-card__path--miss"),
+              ].filter(Boolean).join(" ")}
+            >
+              {played && pathIsGraded
+                ? `⚑ ${PATH_LABELS[pathPick]} · ${pathWon ? `+${PATH_CALL_CORRECT_POINTS}` : "−10"}`
+                : `⚑ ${PATH_LABELS[pathPick]}`}
+            </span>
+          )}
+        </div>
       </button>
     </div>
   );
@@ -342,6 +369,8 @@ function MatchSchedule({
             const comebackPickId = comebackEligible ? getMatchdayPick(scoreWinners ?? winners, slotKey) : null;
             const comebackTeam =
               comebackPickId === m.team1?.id ? m.team1 : comebackPickId === m.team2?.id ? m.team2 : null;
+            const pathEligible = showComeback && isPathCallEligible(m);
+            const pathPick = pathEligible ? getPathCallPick(scoreWinners ?? winners, slotKey) : null;
             return (
               <ScheduleRailCard
                 key={m.num}
@@ -352,6 +381,8 @@ function MatchSchedule({
                 prediction={prediction}
                 comebackEligible={comebackEligible}
                 comebackTeam={comebackTeam}
+                pathEligible={pathEligible}
+                pathPick={pathPick}
                 onSelect={onSelect}
               />
             );
@@ -373,6 +404,7 @@ export function MatchdayPage({
   onSelectMatch,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSavePathCallPick,
   lockTimeMs = null,
   teamById = null,
   onFlagClick,
@@ -504,6 +536,7 @@ export function MatchdayPage({
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
                   onSaveMatchdayPick={onSaveMatchdayPick}
+                  onSavePathCallPick={onSavePathCallPick}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}
                   allowComeback={isViewingSelf}
@@ -521,6 +554,7 @@ export function MatchdayPage({
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
                   onSaveMatchdayPick={onSaveMatchdayPick}
+                  onSavePathCallPick={onSavePathCallPick}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}
                   allowComeback={isViewingSelf}

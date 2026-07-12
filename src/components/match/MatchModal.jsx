@@ -9,14 +9,24 @@ import {
   friendBracketPicksForMatch,
   friendComebackPicksForMatch,
   friendsMissingComebackForMatch,
+  friendPathPicksForMatch,
+  friendsMissingPathCallForMatch,
   getScorePrediction,
   getMatchdayPick,
   isComebackEligible,
+  getPathCallPick,
+  isPathCallEligible,
   gradeScorePrediction,
   mapPredictedScores,
   SCORE_ONE_SIDE_POINTS,
   getScoreExactPoints,
   MATCHDAY_PICK_POINTS,
+  PATH_CALL_CORRECT_POINTS,
+  PATH_CALL_WRONG_POINTS,
+  PATH_OPTIONS,
+  PATH_CHOICES,
+  PATH_SKIP,
+  PATH_LABELS,
 } from "../../lib/scoring";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
@@ -343,12 +353,80 @@ function ComebackLeague({ match, played, youPickId, comebackPicks, title, points
   );
 }
 
+/** Path call league — who called regulation/ET/pens for this knockout game,
+ *  grouped by option, with the winning option marked once played. */
+function PathLeague({ match, played, youPick, pathPicks, title }) {
+  const outcome = played
+    ? match.phase === "pens" ? "pens" : match.phase === "aet" ? "aet" : match.phase === "ft" ? "reg" : null
+    : null;
+  const youPill = youPick ? [{ uid: "__you__", name: "You", me: true }] : [];
+  const rows = PATH_CHOICES.map((opt) => ({
+    opt,
+    picks: [...(youPick === opt ? youPill : []), ...(pathPicks[opt] || [])],
+  })).filter((row) => row.picks.length > 0);
+
+  const header = title && (
+    <div className="mm-league-head">
+      <p className="mm-bracket-league__title">{title}</p>
+      <span className="mm-league-pts">+{PATH_CALL_CORRECT_POINTS} if right · {PATH_CALL_WRONG_POINTS} if wrong</span>
+    </div>
+  );
+
+  if (rows.length === 0) {
+    if (!title) return <p className="mm-calls__empty">No path calls for this one.</p>;
+    return (
+      <div className="mm-bracket-league mm-path__league">
+        {header}
+        <p className="mm-calls__empty">No one’s made a path call here yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mm-bracket-league mm-path__league">
+      {header}
+      {rows.map(({ opt, picks }) => {
+        const graded = opt !== PATH_SKIP;
+        const right = graded && played && outcome === opt;
+        const wrong = graded && played && outcome != null && outcome !== opt;
+        return (
+          <div
+            key={opt}
+            className={[
+              "mm-bracket-league__row",
+              right && "mm-bracket-league__row--right",
+              wrong && "mm-bracket-league__row--wrong",
+            ].filter(Boolean).join(" ")}
+          >
+            <span className="mm-bracket-league__team">
+              {PATH_LABELS[opt]}
+              {right && <span className="mdi mdi-check" aria-hidden="true" />}
+              {wrong && <span className="mdi mdi-close" aria-hidden="true" />}
+              {right && <span className="mm-comeback__pts">+{PATH_CALL_CORRECT_POINTS}</span>}
+            </span>
+            <span className="mm-bracket-league__names">
+              {picks.map((p) => (
+                <span
+                  key={p.uid}
+                  className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
+                >
+                  {p.name}
+                </span>
+              ))}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // MATCH DETAIL BODY — reusable scoreline + timeline + score calls. Used inside
 // the modal (other tabs) and inline in the Matchday master-detail pane.
 // onSaveScorePrediction(slotKey, score|null, match) → boolean.
 // ----------------------------------------------------------------------------
-export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
+export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, onSavePathCallPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
   const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
   const scoreSource = scoreWinners ?? winners;
   const scorePrediction = slotKey ? getScorePrediction(scoreSource, slotKey) : null;
@@ -371,6 +449,14 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   );
   const missingComeback = useMemo(
     () => (match ? friendsMissingComebackForMatch(friends, slotKey, match, selfUid) : []),
+    [friends, slotKey, match, selfUid]
+  );
+  const pathPicks = useMemo(
+    () => (match ? friendPathPicksForMatch(friends, slotKey, match, selfUid) : { reg: [], aet: [], pens: [] }),
+    [friends, slotKey, match, selfUid]
+  );
+  const missingPathCall = useMemo(
+    () => (match ? friendsMissingPathCallForMatch(friends, slotKey, match, selfUid) : []),
     [friends, slotKey, match, selfUid]
   );
 
@@ -469,6 +555,27 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
     else showToast("Could not save comeback pick.", "error");
   };
 
+  // Path call — bet on regulation / extra time / penalties for this knockout game.
+  const pathEligible = allowComeback && isPathCallEligible(match);
+  const pathPick = pathEligible ? getPathCallPick(scoreSource, slotKey) : null;
+  const canEditPath = pathEligible && upcoming && !!onSavePathCallPick && !!slotKey;
+  const pathOutcome = played ? (match.phase === "pens" ? "pens" : match.phase === "aet" ? "aet" : match.phase === "ft" ? "reg" : null) : null;
+  const pathIsGraded = pathPick && pathPick !== PATH_SKIP;
+  const pathCorrect = played && pathIsGraded && pathOutcome ? pathPick === pathOutcome : null;
+
+  const handlePathPick = async (path) => {
+    const next = pathPick === path ? null : path; // tap the current pick again to clear
+    const ok = await onSavePathCallPick?.(slotKey, next, match);
+    if (ok) showToast(next ? "Path call saved" : "Path call cleared");
+    else showToast("Could not save path call.", "error");
+  };
+
+  // Social list on the left: show whenever anyone (friends or you) has made a path call.
+  const showPathLeague =
+    allowComeback &&
+    !!match?.isKnockout &&
+    (pathPicks.reg.length > 0 || pathPicks.aet.length > 0 || pathPicks.pens.length > 0 || !!pathPick);
+
   const statusLabel = played
     ? `${match.phase === "aet" ? "AFTER EXTRA TIME" : match.phase === "pens" ? "PENALTIES" : "FULL TIME"}${match.kickoff ? ` · ${match.kickoff.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase()}` : ""}`
     : null;
@@ -553,6 +660,25 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
               </div>
             )}
 
+            {/* Who's called regulation/ET/pens for this one */}
+            {showPathLeague && (
+              <PathLeague
+                title="League path calls"
+                match={match}
+                played={played}
+                youPick={pathPick}
+                pathPicks={pathPicks}
+              />
+            )}
+
+            {/* Still to make a path call */}
+            {allowComeback && upcoming && missingPathCall.length > 0 && (
+              <div className="mm-missing mm-missing--path">
+                <p className="mm-missing__label">Still to make a path call ({missingPathCall.length})</p>
+                <p className="mm-missing__names">{missingPathCall.map((f) => f.name).join(", ")}</p>
+              </div>
+            )}
+
             {/* Match detail — venue, time, goals — lowest priority, sits at the bottom */}
             <div className="mm-matchinfo">
               <p className="mm-card__title">Match detail</p>
@@ -568,7 +694,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
           {teamsConfirmed && (
             <div className="mm-calls-col">
               {comebackEligible && (
-                <div className="mm-card mm-comeback-card">
+                <div className={["mm-card mm-comeback-card", canEditComeback && !comebackPickId && "mm-card--needs-pick"].filter(Boolean).join(" ")}>
                   <div className="mm-card__head">
                     <p className="mm-card__title">Comeback pick</p>
                     <span className="mm-card__hint">+{MATCHDAY_PICK_POINTS} if correct</span>
@@ -637,11 +763,71 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 </div>
               )}
 
+              {pathEligible && (
+                <div className={["mm-card mm-path-card", canEditPath && !pathPick && "mm-card--needs-pick"].filter(Boolean).join(" ")}>
+                  <div className="mm-card__head">
+                    <p className="mm-card__title">Path call</p>
+                    <span className="mm-card__hint">+{PATH_CALL_CORRECT_POINTS} right · {PATH_CALL_WRONG_POINTS} wrong</span>
+                  </div>
+
+                  <p className="mm-path__note">How does this one get decided?</p>
+
+                  {canEditPath ? (
+                    <div className="mm-path__choices">
+                      {PATH_CHOICES.map((opt) => {
+                        const selected = pathPick === opt;
+                        const isSkip = opt === PATH_SKIP;
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => handlePathPick(opt)}
+                            className={[
+                              "mm-path__choice",
+                              isSkip && "mm-path__choice--skip",
+                              selected && "mm-path__choice--selected",
+                            ].filter(Boolean).join(" ")}
+                            aria-pressed={selected}
+                          >
+                            <span className="mm-path__choice-name">{PATH_LABELS[opt]}</span>
+                            <span className="mm-path__choice-tick">
+                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : isSkip ? "no points" : null}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : pathPick ? (
+                    <div
+                      className={[
+                        "mm-path__mine",
+                        pathPick === PATH_SKIP && "mm-path__mine--skip",
+                        played && pathIsGraded && (pathCorrect ? "mm-path__mine--hit" : "mm-path__mine--miss"),
+                      ].filter(Boolean).join(" ")}
+                    >
+                      <span className="mm-path__choice-name">{PATH_LABELS[pathPick]}</span>
+                      {pathPick === PATH_SKIP ? (
+                        <span className="mm-path__choice-tick">sat out</span>
+                      ) : played ? (
+                        <span className="mm-path__mine-pts">{pathCorrect ? `+${PATH_CALL_CORRECT_POINTS}` : PATH_CALL_WRONG_POINTS}</span>
+                      ) : (
+                        <span className="mm-path__choice-tick">your pick</span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mm-calls__empty">No path call made.</p>
+                  )}
+                </div>
+              )}
+
               <div className="mm-card">
               <div className="mm-card__head">
                 <p className="mm-card__title">{played ? "Score calls — graded" : "Score calls"}</p>
                 <span className="mm-card__hint">one side +{SCORE_ONE_SIDE_POINTS} · exact +{exactPoints}</span>
               </div>
+              {match.isKnockout && (
+                <p className="mm-score-note">Regular time only — extra time and penalties don't count.</p>
+              )}
 
               <div className="mm-calls">
                 {/* You — editable tile for upcoming; same row layout as others once played */}
@@ -838,6 +1024,7 @@ export function MatchModal({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSavePathCallPick,
   lockTimeMs = null,
   teamById = null,
   allowComeback = false,
@@ -903,6 +1090,7 @@ export function MatchModal({
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
           onSaveMatchdayPick={onSaveMatchdayPick}
+          onSavePathCallPick={onSavePathCallPick}
           lockTimeMs={lockTimeMs}
           teamById={teamById}
           allowComeback={allowComeback}

@@ -23,6 +23,7 @@ import {
   SCORE_SUFFIX,
   setScorePrediction,
   setMatchdayPick,
+  setPathCallPick,
   normalizeScores,
   gradeScorePrediction,
   gradeWinners,
@@ -34,7 +35,7 @@ import { BootLoadingOverlay, useBootCycleHold } from "./components/common/BootLo
 import { ScrollBracket } from "./components/bracket/ScrollBracket";
 import { TeamModal } from "./components/team/TeamModal";
 import { MatchModal } from "./components/match/MatchModal";
-import { ViewingAsPicker, HeaderToolbar, AccountMenu, TabNav, ComparePill } from "./components/header/HeaderToolbar";
+import { ViewingAsPicker, HeaderToolbar, AccountMenu, TabNav, DockNav, ComparePill } from "./components/header/HeaderToolbar";
 import { MatchdayPage } from "./components/matchday/MatchdayPage";
 import { StandingsPage } from "./components/standings/StandingsPage";
 import { LoginPage } from "./components/modals/LoginPage";
@@ -384,6 +385,16 @@ export default function App() {
     return true;
   }, []);
 
+  // Path call (Matchday only) — bet on regulation/ET/penalties for a knockout
+  // game. Stored under `path-<slotKey>`; editable until kickoff.
+  const savePathCallPick = useCallback((slotKey, path, match) => {
+    if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
+      return false;
+    }
+    setWinners((prev) => setPathCallPick(prev, slotKey, path));
+    return true;
+  }, []);
+
   const activeLockTimeMs = viewingFriend ? viewingFriend.lockedAt : lockedAt;
   const scorableActual = useMemo(
     () => buildScorableActual(actual, slotMatches, activeLockTimeMs),
@@ -560,10 +571,14 @@ export default function App() {
     compareMap: isViewingSelf ? compareMap : null,
   };
   const showBracket = teams.length === 32;
-  const requiresLogin = !uid || needsName;
   const profileGate = !!uid && !profileLoaded;
   const authGate = !authReady || !friendsReady || profileGate;
   // Login only needs Firebase auth — don't block on Firestore friends or tournament data.
+  // But when a uid IS present, hold off on the login/name prompt until the profile
+  // lookup (friendsReady + profileLoaded) has actually resolved `needsName` — otherwise
+  // a refresh flashes the login dialog for the gap between auth resolving and the
+  // Firestore profile fetch completing, then yanks it away once the real name loads.
+  const requiresLogin = !uid || (profileLoaded && needsName);
   const showLogin = authReady && requiresLogin;
   const shellLoading = showLogin ? false : authGate || loading;
   const showBoot = useBootCycleHold(shellLoading);
@@ -644,6 +659,7 @@ export default function App() {
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
         onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
         onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+        onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
         lockTimeMs={activeLockTimeMs}
         teamById={teamById}
         allowComeback={isViewingSelf}
@@ -665,8 +681,6 @@ export default function App() {
               <span className="broadcast-bar__brand-sub ml-2 hidden text-[var(--text-muted)] lg:inline font-semibold">by Aawaz</span>
             </h1>
           </div>
-
-          <TabNav active={tab} onChange={handleTabChange} className="broadcast-bar__desktop-only" />
 
           <div className="flex flex-1 items-center justify-end gap-2">
             {tab === "bracket" && (
@@ -732,6 +746,7 @@ export default function App() {
           onSelectMatch={setMatchNum}
           onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
           onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+          onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
           lockTimeMs={activeLockTimeMs}
           teamById={teamById}
           onOpenMatch={setMatchModal}
@@ -784,6 +799,9 @@ export default function App() {
 
       {/* MOBILE BOTTOM NAVIGATION */}
       <TabNav variant="bottom" active={tab} onChange={handleTabChange} />
+
+      {/* DESKTOP FLOATING DOCK */}
+      <DockNav active={tab} onChange={handleTabChange} />
         </>
       )}
     </div>

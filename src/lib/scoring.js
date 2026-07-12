@@ -192,6 +192,81 @@ export function gradeScorePrediction(predictedScore, ftScore, slotKey = null) {
 
 
 // ----------------------------------------------------------------------------
+// PATH CALL
+// ----------------------------------------------------------------------------
+// A side-bet on knockout games: predict whether the match is decided in
+// regulation, extra time, or a penalty shootout. Independent of the bracket
+// winner pick and score call — risk 10 points on a wrong guess for a shot at
+// +10. Stored under a `path-<slotKey>` key inside the same `winners` map,
+// editable in the Matchday tab until that match's kickoff.
+export const PATH_CALL_KEY_PREFIX = "path-";
+export const PATH_CALL_CORRECT_POINTS = 20;
+export const PATH_CALL_WRONG_POINTS = -10;
+export const PATH_OPTIONS = ["reg", "aet", "pens"];
+export const PATH_SKIP = "skip";
+export const PATH_CHOICES = [...PATH_OPTIONS, PATH_SKIP];
+export const PATH_LABELS = { reg: "Regular time", aet: "Extra time", pens: "Penalties", skip: "Won't risk it" };
+
+export const pathCallKey = (slotKey) => PATH_CALL_KEY_PREFIX + slotKey;
+
+/** The player's path-call pick for a slot ("reg" | "aet" | "pens"), or null. */
+export function getPathCallPick(winners, slotKey) {
+  if (!slotKey) return null;
+  return winners[pathCallKey(slotKey)] ?? null;
+}
+
+/** Set (or clear, when path is falsy) the path-call pick for a slot. */
+export function setPathCallPick(winners, slotKey, path) {
+  const k = pathCallKey(slotKey);
+  if (!path) {
+    const next = { ...winners };
+    delete next[k];
+    return next;
+  }
+  return { ...winners, [k]: path };
+}
+
+/** Path call is only offered on knockout matches — group games never go to ET/pens. */
+export function isPathCallEligible(match) {
+  return !!match?.isKnockout;
+}
+
+/** Map a graded match's resolved phase onto a path-call outcome, or null if undecided. */
+function actualPath(match) {
+  if (match?.phase === "pens") return "pens";
+  if (match?.phase === "aet") return "aet";
+  if (match?.phase === "ft") return "reg";
+  return null;
+}
+
+/** Other users' path-call picks for a fixture, grouped by option (excludes self). */
+export function friendPathPicksForMatch(friends, slotKey, match, excludeUid) {
+  const empty = { reg: [], aet: [], pens: [], skip: [] };
+  if (!slotKey || slotKey.startsWith("rail-") || !isPathCallEligible(match)) return empty;
+  const groups = { reg: [], aet: [], pens: [], skip: [] };
+  for (const f of friends) {
+    if (!f.name || f.uid === excludeUid) continue;
+    const pick = getPathCallPick(f.winners, slotKey);
+    if (!pick || !groups[pick]) continue;
+    groups[pick].push({ uid: f.uid, name: f.name });
+  }
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  for (const opt of PATH_CHOICES) groups[opt].sort(byName);
+  return groups;
+}
+
+/** Locked, non-abandoned friends who haven't made a path call yet for this
+ *  knockout game (excludes self) — i.e. players who still need to weigh in. */
+export function friendsMissingPathCallForMatch(friends, slotKey, match, excludeUid) {
+  if (!slotKey || slotKey.startsWith("rail-") || !isPathCallEligible(match)) return [];
+  return friends
+    .filter((f) => f.uid !== excludeUid && f.name && f.locked && !f.abandoned)
+    .filter((f) => !getPathCallPick(f.winners, slotKey))
+    .map((f) => ({ uid: f.uid, name: f.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ----------------------------------------------------------------------------
 // COMEBACK PICKS
 // ----------------------------------------------------------------------------
 // The bracket is locked. When a knockout game is actually played, the winner a
@@ -293,9 +368,12 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
     scorePoints = 0,
     matchdayCorrect = 0,
     matchdayTotal = 0,
-    matchdayPoints = 0;
+    matchdayPoints = 0,
+    pathCorrect = 0,
+    pathTotal = 0,
+    pathPoints = 0;
   for (const r of [...ROUNDS, THIRD_PLACE]) {
-    byRound[r.key] = { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0, matchdayCorrect: 0, matchdayTotal: 0, matchdayPoints: 0 };
+    byRound[r.key] = { correct: 0, total: 0, played: 0, scoreOneSide: 0, scoreExact: 0, scorePoints: 0, matchdayCorrect: 0, matchdayTotal: 0, matchdayPoints: 0, pathCorrect: 0, pathTotal: 0, pathPoints: 0 };
     const count = r.matches ?? 1;
     for (let m = 0; m < count; m++) {
       const k = key(r.key, m);
@@ -316,6 +394,28 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
             byRound[r.key].matchdayPoints += MATCHDAY_PICK_POINTS;
             matchdayCorrect++;
             matchdayPoints += MATCHDAY_PICK_POINTS;
+          }
+        }
+      }
+
+      // Path call: predict regulation / extra time / penalties on this knockout game.
+      // A "won't risk it" pick opts out of grading entirely — no points either way.
+      if (isPathCallEligible(match)) {
+        const pathPick = getPathCallPick(winners, k);
+        if (pathPick && pathPick !== PATH_SKIP) {
+          const outcome = actualPath(match);
+          if (outcome) {
+            byRound[r.key].pathTotal++;
+            pathTotal++;
+            if (pathPick === outcome) {
+              byRound[r.key].pathCorrect++;
+              pathCorrect++;
+              byRound[r.key].pathPoints += PATH_CALL_CORRECT_POINTS;
+              pathPoints += PATH_CALL_CORRECT_POINTS;
+            } else {
+              byRound[r.key].pathPoints += PATH_CALL_WRONG_POINTS;
+              pathPoints += PATH_CALL_WRONG_POINTS;
+            }
           }
         }
       }
@@ -348,7 +448,8 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
   return {
     correct, total, points, played, byRound, scoreOneSide, scoreExact, scorePoints,
     matchdayCorrect, matchdayTotal, matchdayPoints,
-    totalPoints: points + scorePoints + matchdayPoints,
+    pathCorrect, pathTotal, pathPoints,
+    totalPoints: points + scorePoints + matchdayPoints + pathPoints,
   };
 }
 
@@ -423,6 +524,18 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
     comebackPts = comebackCorrect ? MATCHDAY_PICK_POINTS : 0;
   }
 
+  // Path call — predict regulation / extra time / penalties on knockout games.
+  const pathPick = isKnockoutSlot && isPathCallEligible(match) ? getPathCallPick(friend.winners, slotKey) : null;
+  let pathCorrect = null;
+  let pathPts = 0;
+  if (played && pathPick && pathPick !== PATH_SKIP) {
+    const outcome = actualPath(match);
+    if (outcome) {
+      pathCorrect = pathPick === outcome;
+      pathPts = pathCorrect ? PATH_CALL_CORRECT_POINTS : PATH_CALL_WRONG_POINTS;
+    }
+  }
+
   return {
     id: slotKey,
     roundLabel,
@@ -438,11 +551,14 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
     comebackTeam,
     comebackCorrect: played ? comebackCorrect : null,
     comebackPts,
+    pathPick,
+    pathCorrect,
+    pathPts,
     scoreDisplay,
     actualScore: played ? ftDisplay(match) : null,
     scorePts,
     scoreResult,
-    totalPts: bracketPts + scorePts + comebackPts,
+    totalPts: bracketPts + scorePts + comebackPts + pathPts,
   };
 }
 

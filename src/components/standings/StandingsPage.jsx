@@ -21,10 +21,12 @@ function useIsMobile(breakpoint = 767) {
 
 function friendPointBreakdown(friend) {
   const scorePts = (friend.scorePoints ?? 0) + (friend.railScorePoints ?? 0);
-  const bracketPts = (friend.points ?? 0) - scorePts;
+  const comebackPts = friend.matchdayPoints ?? 0;
+  const pathPts = friend.pathPoints ?? 0;
+  const bracketPts = (friend.points ?? 0) - scorePts - comebackPts - pathPts;
   const exact = (friend.scoreExact ?? 0) + (friend.railScoreExact ?? 0);
   const oneSide = (friend.scoreOneSide ?? 0) + (friend.railScoreOneSide ?? 0);
-  return { scorePts, bracketPts, exact, oneSide };
+  return { scorePts, bracketPts, comebackPts, pathPts, exact, oneSide };
 }
 
 function FormDots({ friend, actual, slotMatches }) {
@@ -60,7 +62,7 @@ function StandingsRow({
 }) {
   const progress = getPickProgress(friend.winners);
   const gap = friend.points - leaderPoints;
-  const { scorePts, bracketPts, exact, oneSide } = friendPointBreakdown(friend);
+  const { scorePts, bracketPts, comebackPts, pathPts, exact, oneSide } = friendPointBreakdown(friend);
   return (
     <button
       type="button"
@@ -86,28 +88,13 @@ function StandingsRow({
               </span>
             )}
           </span>
-          {isMobile ? (
-            <span className="standings-row__mobile-stats">
-              <span>{friend.correct}/{friend.total} brkt</span>
-              <span className="standings-row__mobile-sep">·</span>
-              <span>{bracketPts}+{scorePts} pts</span>
-              {(exact > 0 || oneSide > 0) && (
-                <>
-                  <span className="standings-row__mobile-sep">·</span>
-                  <span>{exact}e/{oneSide}s</span>
-                </>
-              )}
-            </span>
-          ) : (
-            <span className="standings-row__sub">
-              <ProviderIcon provider={friend.authProvider} className="standings-row__provider" />
-              {friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login"}
-            </span>
-          )}
+          <span className="standings-row__sub">
+            <ProviderIcon provider={friend.authProvider} className="standings-row__provider" />
+            {friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login"}
+          </span>
         </span>
       </span>
       <FormDots friend={friend} actual={actual} slotMatches={slotMatches} />
-      <span className="standings-row__bracket">{friend.correct}/{friend.total}</span>
       <span className="standings-row__brkt-pts">{bracketPts}</span>
       <span className="standings-row__score-pts">
         {scorePts}
@@ -119,7 +106,12 @@ function StandingsRow({
           </span>
         )}
       </span>
-      <span className="standings-row__picks">{progress.filled}/{progress.total}</span>
+      <span className={["standings-row__comeback-pts", comebackPts < 0 && "standings-row__comeback-pts--neg"].filter(Boolean).join(" ")}>
+        {comebackPts !== 0 ? (comebackPts > 0 ? `+${comebackPts}` : comebackPts) : "0"}
+      </span>
+      <span className={["standings-row__path-pts", pathPts < 0 && "standings-row__path-pts--neg"].filter(Boolean).join(" ")}>
+        {pathPts !== 0 ? (pathPts > 0 ? `+${pathPts}` : pathPts) : "0"}
+      </span>
       <span className="standings-row__gap">{gap === 0 ? "—" : gap}</span>
       <span className="standings-row__pts">{friend.points}</span>
       <span className="standings-row__chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
@@ -200,10 +192,10 @@ export function StandingsPage({
               <span>#</span>
               <span>Player</span>
               <span>Form</span>
-              <span className="standings-columns__right">Bracket</span>
               <span className="standings-columns__right">Brkt pts</span>
               <span className="standings-columns__right">Score pts</span>
-              <span className="standings-columns__right">Picks</span>
+              <span className="standings-columns__right">Comeback pts</span>
+              <span className="standings-columns__right">Path pts</span>
               <span className="standings-columns__right">Gap</span>
               <span className="standings-columns__right">Total</span>
               <span className="standings-columns__chevron" />
