@@ -23,7 +23,6 @@ import {
   MATCHDAY_PICK_POINTS,
   PATH_CALL_CORRECT_POINTS,
   PATH_CALL_WRONG_POINTS,
-  PATH_OPTIONS,
   PATH_CHOICES,
   PATH_SKIP,
   PATH_LABELS,
@@ -31,6 +30,14 @@ import {
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
 import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
+
+/** Icon per path-call option — regulation/ET/pens/opt-out each get a distinct glyph. */
+const PATH_ICONS = {
+  reg: "mdi-clock-outline",
+  aet: "mdi-clock-plus-outline",
+  pens: "mdi-soccer",
+  [PATH_SKIP]: "mdi-shield-off-outline",
+};
 
 /** Points a correct winner pick earns for a knockout slot (by round). */
 function roundPointsForSlot(slotKey) {
@@ -399,6 +406,7 @@ function PathLeague({ match, played, youPick, pathPicks, title }) {
             ].filter(Boolean).join(" ")}
           >
             <span className="mm-bracket-league__team">
+              <span className={["mdi", PATH_ICONS[opt]].join(" ")} aria-hidden="true" />
               {PATH_LABELS[opt]}
               {right && <span className="mdi mdi-check" aria-hidden="true" />}
               {wrong && <span className="mdi mdi-close" aria-hidden="true" />}
@@ -789,6 +797,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                             ].filter(Boolean).join(" ")}
                             aria-pressed={selected}
                           >
+                            <span className={["mdi", PATH_ICONS[opt], "mm-path__choice-icon"].join(" ")} aria-hidden="true" />
                             <span className="mm-path__choice-name">{PATH_LABELS[opt]}</span>
                             <span className="mm-path__choice-tick">
                               {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : isSkip ? "no points" : null}
@@ -805,6 +814,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                         played && pathIsGraded && (pathCorrect ? "mm-path__mine--hit" : "mm-path__mine--miss"),
                       ].filter(Boolean).join(" ")}
                     >
+                      <span className={["mdi", PATH_ICONS[pathPick], "mm-path__choice-icon"].join(" ")} aria-hidden="true" />
                       <span className="mm-path__choice-name">{PATH_LABELS[pathPick]}</span>
                       {pathPick === PATH_SKIP ? (
                         <span className="mm-path__choice-tick">sat out</span>

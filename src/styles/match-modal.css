@@ -1011,6 +1011,12 @@
   white-space: nowrap;
 }
 
+.mm-path__choice-icon {
+  flex-shrink: 0;
+  font-size: 0.9375rem;
+  opacity: 0.85;
+}
+
 .mm-path__choice-tick {
   flex-shrink: 0;
   font-size: 0.6875rem;
