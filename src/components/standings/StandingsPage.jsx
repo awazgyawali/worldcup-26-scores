@@ -90,7 +90,7 @@ function StandingsRow({
           </span>
           <span className="standings-row__sub">
             <ProviderIcon provider={friend.authProvider} className="standings-row__provider" />
-            {friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login"}
+            {friend.email || (friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login")}
           </span>
         </span>
       </span>
@@ -143,7 +143,7 @@ function OpenListRow({ friend, isMe, expanded, onToggle }) {
           </span>
           <span className="standings-row__sub">
             <ProviderIcon provider={friend.authProvider} className="standings-row__provider" />
-            {friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login"}
+            {friend.email || (friend.authProvider === "google" ? "Google" : friend.authProvider === "email" ? "Email" : "No linked login")}
           </span>
         </span>
       </span>

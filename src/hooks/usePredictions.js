@@ -17,6 +17,7 @@ function mapPredictionDoc(id, data) {
   return {
     uid: id,
     name: trimmedName,
+    email: data.email || null,
     winners: data.winners || {},
     locked: !!data.locked,
     lockedAt: data.lockedAt?.toMillis?.() ?? null,
@@ -167,6 +168,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         {
           uid: userId,
           name: userName,
+          email: auth.currentUser?.email || null,
           winners: payload,
           authProvider: getAuthProviderTag(auth.currentUser),
           updatedAt: serverTimestamp(),
@@ -262,6 +264,14 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
 
     setName(self.name);
     setNeedsName(false);
+
+    if (!self.email && auth.currentUser?.email) {
+      setDoc(
+        doc(db, PREDICTIONS_COLLECTION, uid),
+        { email: auth.currentUser.email },
+        { merge: true }
+      ).catch((err) => console.error("[WC26] Failed to backfill email:", err));
+    }
 
     const isLocked = self.locked;
     if (isLocked) {
@@ -523,6 +533,7 @@ export function usePredictions(winners, { enabled = true, onRemoteWinners } = {}
         {
           uid,
           name,
+          email: auth.currentUser?.email || null,
           locked: true,
           lockedAt: serverTimestamp(),
           winners: payload,
