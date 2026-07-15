@@ -769,6 +769,7 @@ export default function App() {
           actual={actual}
           slotMatches={slotMatches}
           byNum={byNum}
+          teams={teams}
         />
       )}
 

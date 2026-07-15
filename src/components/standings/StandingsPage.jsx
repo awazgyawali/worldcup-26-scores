@@ -3,6 +3,7 @@ import { ProviderIcon } from "../common/ProviderIcon";
 import { recentPickResults } from "../../lib/scoring";
 import { getPickProgress } from "../../lib/bracket";
 import { StandingsFriendDetail } from "./StandingsFriendDetail";
+import { ScenarioLab } from "./ScenarioLab";
 
 function useIsMobile(breakpoint = 767) {
   const [isMobile, setIsMobile] = useState(
@@ -163,12 +164,15 @@ export function StandingsPage({
   actual,
   slotMatches,
   byNum,
+  teams = [],
 }) {
   const isMobile = useIsMobile();
+  const [showSim, setShowSim] = useState(false);
 
   const locked = friends.filter((f) => f.locked);
   const open = friends.filter((f) => !f.locked);
   const leaderPoints = locked[0]?.points ?? 0;
+  const canSimulate = teams.length === 32 && locked.length > 0;
 
   const handleToggle = (friend) => {
     onToggle?.(friend);
@@ -178,12 +182,35 @@ export function StandingsPage({
     <main className="app-main standings-page nice-scroll">
       <div className="standings-shell">
         <div className="standings-head">
-          <h2 className="standings-head__title">Standings</h2>
-          <p className="standings-head__meta">
-            {locked.length} locked · {open.length} still editing
-          </p>
+          <div className="standings-head__left">
+            <h2 className="standings-head__title">Standings</h2>
+            <p className="standings-head__meta">
+              {locked.length} locked · {open.length} still editing
+            </p>
+          </div>
+          {canSimulate && (
+            <button
+              type="button"
+              className={["scn-launch", showSim && "scn-launch--on"].filter(Boolean).join(" ")}
+              onClick={() => setShowSim(true)}
+            >
+              <span className="scn-launch__spark" aria-hidden="true">⚡</span>
+              What-If Simulator
+            </button>
+          )}
         </div>
         <p className="standings-head__hint">Tap a row to see bracket picks, score calls, and how they earned points.</p>
+
+        <ScenarioLab
+          open={showSim && canSimulate}
+          friends={friends}
+          currentUid={currentUid}
+          actual={actual}
+          slotMatches={slotMatches}
+          teams={teams}
+          byNum={byNum}
+          onClose={() => setShowSim(false)}
+        />
 
         {locked.length > 0 ? (
           <div className="standings-table">

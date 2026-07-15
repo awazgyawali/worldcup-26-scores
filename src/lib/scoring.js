@@ -232,7 +232,7 @@ export function isPathCallEligible(match) {
 }
 
 /** Map a graded match's resolved phase onto a path-call outcome, or null if undecided. */
-function actualPath(match) {
+export function actualPath(match) {
   if (match?.phase === "pens") return "pens";
   if (match?.phase === "aet") return "aet";
   if (match?.phase === "ft") return "reg";
