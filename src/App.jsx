@@ -23,6 +23,7 @@ import {
   SCORE_SUFFIX,
   setScorePrediction,
   setMatchdayPick,
+  setMatchdayRisk,
   setPathCallPick,
   normalizeScores,
   gradeScorePrediction,
@@ -385,6 +386,17 @@ export default function App() {
     return true;
   }, []);
 
+  // "Risk it" toggle on the comeback pick (third place + final only) — trades
+  // the safe +10/0 for -10/+20 (third) or -20/+40 (final). Stored under
+  // `mdrisk-<slotKey>`; editable until kickoff, same as the pick itself.
+  const saveMatchdayRisk = useCallback((slotKey, on, match) => {
+    if (match?.kickoff && Date.now() >= match.kickoff.getTime()) {
+      return false;
+    }
+    setWinners((prev) => setMatchdayRisk(prev, slotKey, on));
+    return true;
+  }, []);
+
   // Path call (Matchday only) — bet on regulation/ET/penalties for a knockout
   // game. Stored under `path-<slotKey>`; editable until kickoff.
   const savePathCallPick = useCallback((slotKey, path, match) => {
@@ -659,6 +671,7 @@ export default function App() {
         onFlagClick={(t) => { setMatchModal(null); setTeamModal(t); }}
         onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
         onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+        onSaveMatchdayRisk={(slotKey, on, m) => saveMatchdayRisk(slotKey, on, byNum.get(m.num) ?? m)}
         onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
         lockTimeMs={activeLockTimeMs}
         teamById={teamById}
@@ -746,6 +759,7 @@ export default function App() {
           onSelectMatch={setMatchNum}
           onSaveScorePrediction={(slotKey, score, m) => saveScorePrediction(slotKey, score, byNum.get(m.num) ?? m)}
           onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
+          onSaveMatchdayRisk={(slotKey, on, m) => saveMatchdayRisk(slotKey, on, byNum.get(m.num) ?? m)}
           onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
           lockTimeMs={activeLockTimeMs}
           teamById={teamById}

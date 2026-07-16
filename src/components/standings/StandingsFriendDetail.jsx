@@ -66,6 +66,7 @@ function CompactPredictionRow({ event }) {
             ↩
             <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-m-pred__flag-sm" />
             {event.comebackTeam.code}
+            {event.comebackRisked && <span className="mdi mdi-fire standings-fire" title="Risked it" aria-label="Risked it" />}
             {event.played && (
               <span className={event.comebackCorrect ? "standings-detail__ok" : "standings-detail__bad"}>
                 {event.comebackCorrect ? "✓" : "✕"}
@@ -149,6 +150,7 @@ function EventRow({ event, table = false }) {
               <span className="standings-events-table__comeback-arrow" aria-hidden="true">↩</span>
               <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-event__flag-sm" />
               {event.comebackTeam.code}
+              {event.comebackRisked && <span className="mdi mdi-fire standings-fire" title="Risked it" aria-label="Risked it" />}
               {event.isFuture ? (
                 <span className="standings-m-pred__pick-dot" aria-hidden="true" />
               ) : (
@@ -156,7 +158,11 @@ function EventRow({ event, table = false }) {
                   {event.comebackCorrect ? "✓" : "✕"}
                 </span>
               )}
-              {event.comebackPts > 0 && <span className="standings-events-table__mini-pts">+{event.comebackPts}</span>}
+              {event.comebackPts !== 0 && (
+                <span className="standings-events-table__mini-pts">
+                  {event.comebackPts > 0 ? `+${event.comebackPts}` : event.comebackPts}
+                </span>
+              )}
             </span>
           )}
         </span>
@@ -278,6 +284,7 @@ function EventRow({ event, table = false }) {
             <span className="standings-event__value">
               <img src={flagSrc(event.comebackTeam.iso2, 40)} alt="" className="standings-event__flag-sm" />
               {event.comebackTeam.code}
+              {event.comebackRisked && <span className="mdi mdi-fire standings-fire" title="Risked it" aria-label="Risked it" />}
               {event.isFuture ? (
                 <span className="standings-m-pred__pick-dot" aria-hidden="true" />
               ) : (
@@ -287,7 +294,7 @@ function EventRow({ event, table = false }) {
               )}
             </span>
             <span className={event.comebackPts > 0 ? "standings-event__pts standings-event__pts--hit" : "standings-event__pts"}>
-              {event.isFuture ? "·" : event.comebackPts > 0 ? `+${event.comebackPts}` : "0"}
+              {event.isFuture ? "·" : event.comebackPts > 0 ? `+${event.comebackPts}` : event.comebackPts < 0 ? event.comebackPts : "0"}
             </span>
           </div>
         )}

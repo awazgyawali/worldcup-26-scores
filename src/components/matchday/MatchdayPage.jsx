@@ -3,6 +3,8 @@ import {
   getScorePrediction,
   gradeScorePrediction,
   getMatchdayPick,
+  getMatchdayRisk,
+  comebackStakes,
   isComebackEligible,
   getPathCallPick,
   isPathCallEligible,
@@ -71,6 +73,7 @@ function MatchdayDesktopDetail({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSaveMatchdayRisk,
   onSavePathCallPick,
   lockTimeMs,
   teamById,
@@ -94,6 +97,7 @@ function MatchdayDesktopDetail({
         onFlagClick={onFlagClick}
         onSaveScorePrediction={onSaveScorePrediction}
         onSaveMatchdayPick={onSaveMatchdayPick}
+        onSaveMatchdayRisk={onSaveMatchdayRisk}
         onSavePathCallPick={onSavePathCallPick}
         lockTimeMs={lockTimeMs}
         teamById={teamById}
@@ -114,6 +118,7 @@ function MatchdayMobileView({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSaveMatchdayRisk,
   onSavePathCallPick,
   lockTimeMs,
   teamById,
@@ -152,6 +157,7 @@ function MatchdayMobileView({
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
           onSaveMatchdayPick={onSaveMatchdayPick}
+          onSaveMatchdayRisk={onSaveMatchdayRisk}
           onSavePathCallPick={onSavePathCallPick}
           lockTimeMs={lockTimeMs}
           teamById={teamById}
@@ -228,7 +234,7 @@ function LockBanner({ title, sub, buttonLabel, onAction }) {
   );
 }
 
-function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEligible, comebackTeam, pathEligible, pathPick, onSelect }) {
+function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEligible, comebackTeam, comebackPayout, pathEligible, pathPick, onSelect }) {
   const played = m.status === "played";
   const live = m.status === "live";
   const { scoreResult, scorePoints } = played && prediction && m.ftScore
@@ -292,9 +298,9 @@ function ScheduleRailCard({ m, slotKey, isNext, selected, prediction, comebackEl
             >
               {comebackTeam
                 ? played
-                  ? `↩ ${comebackTeam.code} · ${comebackWon ? "+10" : "+0"}`
+                  ? `↩ ${comebackTeam.code} · ${comebackWon ? `+${comebackPayout?.correct ?? 10}` : comebackPayout?.wrong ? comebackPayout.wrong : "+0"}`
                   : `↩ ${comebackTeam.code}`
-                : "↩ Comeback +10"}
+                : `↩ Comeback +${comebackPayout?.correct ?? 10}`}
             </span>
           )}
           {pathEligible && pathPick && (
@@ -369,6 +375,9 @@ function MatchSchedule({
             const comebackPickId = comebackEligible ? getMatchdayPick(scoreWinners ?? winners, slotKey) : null;
             const comebackTeam =
               comebackPickId === m.team1?.id ? m.team1 : comebackPickId === m.team2?.id ? m.team2 : null;
+            const comebackPayout = comebackEligible
+              ? comebackStakes(slotKey, getMatchdayRisk(scoreWinners ?? winners, slotKey))
+              : null;
             const pathEligible = showComeback && isPathCallEligible(m);
             const pathPick = pathEligible ? getPathCallPick(scoreWinners ?? winners, slotKey) : null;
             return (
@@ -381,6 +390,7 @@ function MatchSchedule({
                 prediction={prediction}
                 comebackEligible={comebackEligible}
                 comebackTeam={comebackTeam}
+                comebackPayout={comebackPayout}
                 pathEligible={pathEligible}
                 pathPick={pathPick}
                 onSelect={onSelect}
@@ -404,6 +414,7 @@ export function MatchdayPage({
   onSelectMatch,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSaveMatchdayRisk,
   onSavePathCallPick,
   lockTimeMs = null,
   teamById = null,
@@ -536,6 +547,7 @@ export function MatchdayPage({
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
                   onSaveMatchdayPick={onSaveMatchdayPick}
+                  onSaveMatchdayRisk={onSaveMatchdayRisk}
                   onSavePathCallPick={onSavePathCallPick}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}
@@ -554,6 +566,7 @@ export function MatchdayPage({
                   onFlagClick={onFlagClick}
                   onSaveScorePrediction={onSaveScorePrediction}
                   onSaveMatchdayPick={onSaveMatchdayPick}
+                  onSaveMatchdayRisk={onSaveMatchdayRisk}
                   onSavePathCallPick={onSavePathCallPick}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}

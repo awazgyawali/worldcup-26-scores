@@ -171,6 +171,17 @@ re-pick a winner from the two real teams — **in the Matchday tab only, never
 touching the bracket** — for a flat **+10** if correct (`MATCHDAY_PICK_POINTS`).
 It's purely additive: the dead bracket slot was already worth 0.
 
+On the **third-place game and the final only**, an optional **"risk it"
+toggle bar** in the comeback card (risked picks get a fire marker in the
+standings and the league comeback list)
+(`mdrisk-<slotKey>`, helpers `getMatchdayRisk`/`setMatchdayRisk`/
+`comebackStakes`/`isComebackRiskEligible`) trades the safe +10/0 for
+**−10/+20** (third place) or **−20/+40** (final) — see
+`MATCHDAY_RISK_STAKES`. A bracket pick on these games is worth far more
+(third place 40, final 60), so an un-risked comeback shouldn't ride even with
+it. Clearing the comeback pick clears the flag; `App.jsx`'s `saveMatchdayRisk`
+writes it, editable until kickoff.
+
 - **Storage:** a new `md-<slotKey>` key inside the same `winners` map (e.g.
   `md-r16-3`), alongside the bracket pick (`r16-3`) and score call
   (`r16-3-score`). Synced for free; `normalize`/`normalizeScores` ignore it.

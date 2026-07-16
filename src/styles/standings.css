@@ -1215,3 +1215,10 @@
     color: var(--predict-bright);
   }
 }
+
+/* Fire marker on risked comeback picks (third place & final) */
+.standings-fire {
+  margin-left: 0.15rem;
+  font-size: 0.8em;
+  color: var(--wrong);
+}

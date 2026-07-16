@@ -13,6 +13,9 @@ import {
   friendsMissingPathCallForMatch,
   getScorePrediction,
   getMatchdayPick,
+  getMatchdayRisk,
+  comebackStakes,
+  isComebackRiskEligible,
   isComebackEligible,
   getPathCallPick,
   isPathCallEligible,
@@ -297,8 +300,8 @@ function BracketPicksLeague({ match, bracketPicks, played, pointsHint }) {
 /** Comeback picks league — who re-picked which team for a dead-bracket knockout
  *  game (everyone whose bracket team is out), grouped by team with the +10 shown
  *  on the winning side once played. */
-function ComebackLeague({ match, played, youPickId, comebackPicks, title, pointsHint }) {
-  const youPill = youPickId ? [{ uid: "__you__", name: "You", me: true }] : [];
+function ComebackLeague({ match, played, youPickId, youRisked = false, comebackPicks, title, pointsHint }) {
+  const youPill = youPickId ? [{ uid: "__you__", name: "You", me: true, risked: youRisked }] : [];
   const rows = [
     { team: match.team1, picks: [...(youPickId === match.team1?.id ? youPill : []), ...comebackPicks.team1] },
     { team: match.team2, picks: [...(youPickId === match.team2?.id ? youPill : []), ...comebackPicks.team2] },
@@ -350,6 +353,7 @@ function ComebackLeague({ match, played, youPickId, comebackPicks, title, points
                   className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
                 >
                   {p.name}
+                  {p.risked && <span className="mdi mdi-fire mm-comeback__pill-risk" title="Risked it" aria-label="Risked it" />}
                 </span>
               ))}
             </span>
@@ -434,7 +438,7 @@ function PathLeague({ match, played, youPick, pathPicks, title }) {
 // the modal (other tabs) and inline in the Matchday master-detail pane.
 // onSaveScorePrediction(slotKey, score|null, match) → boolean.
 // ----------------------------------------------------------------------------
-export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, onSavePathCallPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
+export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, onSaveMatchdayRisk, onSavePathCallPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
   const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
   const scoreSource = scoreWinners ?? winners;
   const scorePrediction = slotKey ? getScorePrediction(scoreSource, slotKey) : null;
@@ -563,6 +567,20 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
     else showToast("Could not save comeback pick.", "error");
   };
 
+  // "Risk it" — optional stake bump on the comeback pick, third place + final only.
+  const comebackRiskEligible = comebackEligible && isComebackRiskEligible(slotKey);
+  const comebackRisked = comebackRiskEligible && getMatchdayRisk(scoreSource, slotKey);
+  const comebackPayout = comebackStakes(slotKey, comebackRisked);
+  const canEditComebackRisk = comebackRiskEligible && canEditComeback && !!onSaveMatchdayRisk;
+
+  const handleComebackRisk = async () => {
+    const next = !comebackRisked;
+    const ok = await onSaveMatchdayRisk?.(slotKey, next, match);
+    const stakes = comebackStakes(slotKey, true);
+    if (ok) showToast(next ? `Risk on — ${stakes.wrong} wrong, +${stakes.correct} right` : "Risk off — back to the safe +10");
+    else showToast("Could not save risk toggle.", "error");
+  };
+
   // Path call — bet on regulation / extra time / penalties for this knockout game.
   const pathEligible = allowComeback && isPathCallEligible(match);
   const pathPick = pathEligible ? getPathCallPick(scoreSource, slotKey) : null;
@@ -656,6 +674,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 match={match}
                 played={played}
                 youPickId={comebackPickId}
+                youRisked={comebackRisked}
                 comebackPicks={comebackPicks}
               />
             )}
@@ -705,7 +724,11 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                 <div className={["mm-card mm-comeback-card", canEditComeback && !comebackPickId && "mm-card--needs-pick"].filter(Boolean).join(" ")}>
                   <div className="mm-card__head">
                     <p className="mm-card__title">Comeback pick</p>
-                    <span className="mm-card__hint">+{MATCHDAY_PICK_POINTS} if correct</span>
+                    <span className="mm-card__hint">
+                      {comebackRisked
+                        ? `+${comebackPayout.correct} right · ${comebackPayout.wrong} wrong`
+                        : `+${comebackPayout.correct} if correct`}
+                    </span>
                   </div>
 
                   <p className="mm-comeback__note">
@@ -738,7 +761,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                             <img src={flagSrc(team.iso2, 40)} alt="" />
                             <span className="mm-comeback__choice-name">{team.name}</span>
                             <span className="mm-comeback__choice-tick">
-                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : `+${MATCHDAY_PICK_POINTS}`}
+                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : `+${comebackPayout.correct}`}
                             </span>
                           </button>
                         );
@@ -757,8 +780,13 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                         >
                           <img src={flagSrc(myTeam.iso2, 40)} alt="" />
                           <span className="mm-comeback__choice-name">{myTeam.name}</span>
+                          {comebackRisked && (
+                            <span className="mdi mdi-fire mm-comeback__pill-risk" title="Risked it" aria-label="Risked it" />
+                          )}
                           {played ? (
-                            <span className="mm-comeback__mine-pts">{won ? `+${MATCHDAY_PICK_POINTS}` : "0"}</span>
+                            <span className="mm-comeback__mine-pts">
+                              {won ? `+${comebackPayout.correct}` : comebackPayout.wrong ? comebackPayout.wrong : "0"}
+                            </span>
                           ) : (
                             <span className="mm-comeback__choice-tick">your pick</span>
                           )}
@@ -767,6 +795,34 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
                     })()
                   ) : (
                     <p className="mm-calls__empty">No comeback pick made.</p>
+                  )}
+
+                  {/* Optional "risk it" — third place & final only: trade the safe
+                      +10/0 for a bigger payout with points on the line. */}
+                  {comebackRiskEligible && (canEditComebackRisk || comebackRisked) && (
+                    <div className={["mm-comeback__risk", comebackRisked && "mm-comeback__risk--on"].filter(Boolean).join(" ")}>
+                      <div className="mm-comeback__risk-text">
+                        <span className="mm-comeback__risk-title">
+                          <span className="mdi mdi-fire" aria-hidden="true" /> Risk it
+                        </span>
+                        <span className="mm-comeback__risk-hint">
+                          {comebackStakes(slotKey, true).wrong} if wrong · +{comebackStakes(slotKey, true).correct} if right
+                        </span>
+                      </div>
+                      {canEditComebackRisk ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={comebackRisked}
+                          onClick={handleComebackRisk}
+                          className={["mm-comeback__risk-toggle", comebackRisked && "mm-comeback__risk-toggle--on"].filter(Boolean).join(" ")}
+                        >
+                          <span className="mm-comeback__risk-knob" />
+                        </button>
+                      ) : (
+                        <span className="mm-comeback__risk-locked">risked</span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -1034,6 +1090,7 @@ export function MatchModal({
   onFlagClick,
   onSaveScorePrediction,
   onSaveMatchdayPick,
+  onSaveMatchdayRisk,
   onSavePathCallPick,
   lockTimeMs = null,
   teamById = null,
@@ -1100,6 +1157,7 @@ export function MatchModal({
           onFlagClick={onFlagClick}
           onSaveScorePrediction={onSaveScorePrediction}
           onSaveMatchdayPick={onSaveMatchdayPick}
+          onSaveMatchdayRisk={onSaveMatchdayRisk}
           onSavePathCallPick={onSavePathCallPick}
           lockTimeMs={lockTimeMs}
           teamById={teamById}

@@ -279,7 +279,46 @@ export function friendsMissingPathCallForMatch(friends, slotKey, match, excludeU
 export const MATCHDAY_PICK_POINTS = 10;
 export const MATCHDAY_KEY_PREFIX = "md-";
 
+// "Risk it" — an optional toggle on the comeback pick, offered only on the
+// third-place game and the final. It trades the safe +10/0 payout for a bigger
+// upside with a real downside (a bracket pick on these games is worth far more,
+// so a free +10 comeback shouldn't ride even with it). Stored under a
+// `mdrisk-<slotKey>` key inside the same `winners` map.
+export const MATCHDAY_RISK_KEY_PREFIX = "mdrisk-";
+export const MATCHDAY_RISK_STAKES = {
+  "third-0": { correct: 20, wrong: -10 },
+  "final-0": { correct: 40, wrong: -20 },
+};
+
 export const matchdayKey = (slotKey) => MATCHDAY_KEY_PREFIX + slotKey;
+export const matchdayRiskKey = (slotKey) => MATCHDAY_RISK_KEY_PREFIX + slotKey;
+
+/** Whether the "risk it" toggle exists for this slot (third place + final only). */
+export const isComebackRiskEligible = (slotKey) => !!MATCHDAY_RISK_STAKES[slotKey];
+
+/** Whether the player flipped "risk it" on for this slot's comeback pick. */
+export function getMatchdayRisk(winners, slotKey) {
+  if (!slotKey) return false;
+  return !!winners?.[matchdayRiskKey(slotKey)];
+}
+
+/** Set (or clear, when on is falsy) the "risk it" flag for a slot. */
+export function setMatchdayRisk(winners, slotKey, on) {
+  const k = matchdayRiskKey(slotKey);
+  if (!on) {
+    const next = { ...winners };
+    delete next[k];
+    return next;
+  }
+  return { ...winners, [k]: true };
+}
+
+/** Comeback payout for a slot: { correct, wrong }. Safe default is +10/0;
+ *  risked third-place/final picks use MATCHDAY_RISK_STAKES. */
+export function comebackStakes(slotKey, risked) {
+  if (risked && MATCHDAY_RISK_STAKES[slotKey]) return MATCHDAY_RISK_STAKES[slotKey];
+  return { correct: MATCHDAY_PICK_POINTS, wrong: 0 };
+}
 
 /** The player's comeback-pick team id for a slot, or null. */
 export function getMatchdayPick(winners, slotKey) {
@@ -287,12 +326,14 @@ export function getMatchdayPick(winners, slotKey) {
   return winners[matchdayKey(slotKey)] ?? null;
 }
 
-/** Set (or clear, when teamId is falsy) the comeback pick for a slot. */
+/** Set (or clear, when teamId is falsy) the comeback pick for a slot.
+ *  Clearing the pick also clears its "risk it" flag. */
 export function setMatchdayPick(winners, slotKey, teamId) {
   const k = matchdayKey(slotKey);
   if (!teamId) {
     const next = { ...winners };
     delete next[k];
+    delete next[matchdayRiskKey(slotKey)];
     return next;
   }
   return { ...winners, [k]: teamId };
@@ -328,8 +369,9 @@ export function friendComebackPicksForMatch(friends, slotKey, match, excludeUid)
     if (bracketPickAlive(f.winners?.[slotKey], match)) continue; // their bracket team is playing
     const pickId = getMatchdayPick(f.winners, slotKey);
     if (!pickId) continue;
-    if (pickId === match.team1.id) team1.push({ uid: f.uid, name: f.name });
-    else if (pickId === match.team2.id) team2.push({ uid: f.uid, name: f.name });
+    const risked = getMatchdayRisk(f.winners, slotKey);
+    if (pickId === match.team1.id) team1.push({ uid: f.uid, name: f.name, risked });
+    else if (pickId === match.team2.id) team2.push({ uid: f.uid, name: f.name, risked });
   }
   const byName = (a, b) => a.name.localeCompare(b.name);
   team1.sort(byName);
@@ -384,16 +426,21 @@ export function gradeWinners(winners, actual, slotMatches, lockTimeMs = null) {
       played++;
 
       // Comeback pick: only when the bracket winner isn't in this game.
+      // A risked pick (third place / final) pays more but loses points when wrong.
       if (!bracketPickAlive(winners[k], match)) {
         const comebackPick = getMatchdayPick(winners, k);
         if (comebackPick) {
+          const stakes = comebackStakes(k, getMatchdayRisk(winners, k));
           byRound[r.key].matchdayTotal++;
           matchdayTotal++;
           if (comebackPick === actual[k]) {
             byRound[r.key].matchdayCorrect++;
-            byRound[r.key].matchdayPoints += MATCHDAY_PICK_POINTS;
+            byRound[r.key].matchdayPoints += stakes.correct;
             matchdayCorrect++;
-            matchdayPoints += MATCHDAY_PICK_POINTS;
+            matchdayPoints += stakes.correct;
+          } else {
+            byRound[r.key].matchdayPoints += stakes.wrong;
+            matchdayPoints += stakes.wrong;
           }
         }
       }
@@ -516,12 +563,14 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
   const bracketDead = isKnockoutSlot && !!predictedWinnerId && !bracketPickAlive(predictedWinnerId, match);
   const comebackPickId = bracketDead ? getMatchdayPick(friend.winners, slotKey) : null;
   const comebackTeam = comebackPickId ? teamOnMatch(match, comebackPickId) : null;
+  const comebackRisked = !!comebackPickId && getMatchdayRisk(friend.winners, slotKey);
   let comebackCorrect = null;
   let comebackPts = 0;
   if (played && comebackPickId) {
     const actualWinner = actual[slotKey] || match.winner?.id;
+    const stakes = comebackStakes(slotKey, comebackRisked);
     comebackCorrect = !!(actualWinner && comebackPickId === actualWinner);
-    comebackPts = comebackCorrect ? MATCHDAY_PICK_POINTS : 0;
+    comebackPts = comebackCorrect ? stakes.correct : stakes.wrong;
   }
 
   // Path call — predict regulation / extra time / penalties on knockout games.
@@ -549,6 +598,7 @@ function buildFriendEvent(friend, match, slotKey, roundLabel, roundPoints, actua
     bracketPts,
     bracketDead,
     comebackTeam,
+    comebackRisked,
     comebackCorrect: played ? comebackCorrect : null,
     comebackPts,
     pathPick,

@@ -183,7 +183,7 @@ function FixtureCard({ slot, friends, simActual, simSlotMatches, onSet, onClear,
                 <span className="scn-earners__name">{e.name}</span>
                 <span className="scn-earners__tags">
                   {e.bracket > 0 && <span className="scn-tag scn-tag--brkt">+{e.bracket} advance</span>}
-                  {e.comeback > 0 && <span className="scn-tag scn-tag--cb">+{e.comeback} comeback</span>}
+                  {e.comeback !== 0 && <span className={`scn-tag ${e.comeback > 0 ? "scn-tag--cb" : "scn-tag--neg"}`}>{e.comeback > 0 ? `+${e.comeback}` : e.comeback} comeback</span>}
                   {e.path !== 0 && <span className={`scn-tag ${e.path > 0 ? "scn-tag--path" : "scn-tag--neg"}`}>{e.path > 0 ? `+${e.path}` : e.path} path</span>}
                   {e.score > 0 && <span className="scn-tag scn-tag--score">+{e.score} score</span>}
                 </span>

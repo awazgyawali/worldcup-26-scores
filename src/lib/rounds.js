@@ -9,7 +9,7 @@ export const ROUNDS = [
   { key: "final", label: "Final", short: "F", matches: 1, points: 60, nums: [104] },
 ];
 export const FINAL_ROUND = ROUNDS.length - 1;
-export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 15, num: 103 };
+export const THIRD_PLACE = { key: "third", label: "Third place", short: "3RD", points: 40, num: 103 };
 
 // Exact-score prediction points, by knockout round. Falls back to
 // SCORE_EXACT_POINTS (scoring.js) for group-stage ("rail-") matches.

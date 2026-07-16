@@ -22,7 +22,8 @@ import {
   PATH_SKIP,
   PATH_CALL_CORRECT_POINTS,
   PATH_CALL_WRONG_POINTS,
-  MATCHDAY_PICK_POINTS,
+  comebackStakes,
+  getMatchdayRisk,
 } from "./scoring";
 
 const ALL_ROUNDS = [...ROUNDS, THIRD_PLACE];
@@ -192,7 +193,10 @@ export function slotContribution(friend, slot, match, actualWinnerId) {
   let comeback = 0;
   if (!pickAlive) {
     const cb = getMatchdayPick(winners, slot.slotKey);
-    if (cb && cb === actualWinnerId) comeback = MATCHDAY_PICK_POINTS;
+    if (cb) {
+      const stakes = comebackStakes(slot.slotKey, getMatchdayRisk(winners, slot.slotKey));
+      comeback = cb === actualWinnerId ? stakes.correct : stakes.wrong;
+    }
   }
 
   let path = 0;

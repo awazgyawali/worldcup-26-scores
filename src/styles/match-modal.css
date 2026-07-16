@@ -964,6 +964,98 @@
   color: var(--agree);
 }
 
+/* "Risk it" toggle — third place & final comeback picks only */
+.mm-comeback__risk {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px dashed var(--border-strong);
+  background: var(--bg-surface);
+}
+
+.mm-comeback__risk--on {
+  border-style: solid;
+  border-color: color-mix(in oklch, var(--wrong) 55%, var(--border-strong));
+  background: color-mix(in oklch, var(--wrong) 8%, var(--bg-elevated));
+}
+
+.mm-comeback__risk-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.mm-comeback__risk-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.mm-comeback__risk--on .mm-comeback__risk-title {
+  color: color-mix(in oklch, var(--wrong) 85%, var(--text-primary));
+}
+
+.mm-comeback__risk-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.mm-comeback__risk-toggle {
+  flex-shrink: 0;
+  position: relative;
+  width: 2.1rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mm-comeback__risk-knob {
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transform: translateY(-50%);
+  transition: left 0.15s, background 0.15s;
+}
+
+.mm-comeback__risk-toggle--on {
+  border-color: var(--wrong);
+  background: color-mix(in oklch, var(--wrong) 35%, var(--bg-elevated));
+}
+
+.mm-comeback__risk-toggle--on .mm-comeback__risk-knob {
+  left: calc(100% - 1rem);
+  background: var(--wrong);
+}
+
+.mm-comeback__risk-locked {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wrong);
+}
+
+.mm-comeback__pill-risk {
+  margin-left: 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--wrong);
+}
+
 .mm-bracket-league__pill--you {
   border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
   background: var(--pitch-dim);
