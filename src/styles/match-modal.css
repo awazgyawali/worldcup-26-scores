@@ -341,13 +341,12 @@
   color: var(--wrong);
 }
 
+/* Comeback pick and path call now each live alone inside their own .mm-card,
+   so no top divider is needed — the card boundary already separates them. */
 .mm-bracket-league {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  border-top: 1px solid var(--border);
-  margin-top: 0.45rem;
-  padding-top: 0.45rem;
 }
 
 .mm-bracket-league__title {
@@ -816,6 +815,14 @@
   min-width: 0;
 }
 
+/* LEFT column — comeback pick and path call are now separate cards, stacked. */
+.mm-picks-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 /* Your comeback selection: same card chrome as score calls, thin accent edge. */
 .mm-comeback-card {
   border-left: 2px solid color-mix(in oklch, var(--pitch) 55%, transparent);
@@ -1247,12 +1254,6 @@
     padding: 0.5rem 0.65rem;
   }
 
-  /* League bracket picks — slightly bigger and roomier in the Matchday detail */
-  .matchday-desktop-detail .mm-bracket-league {
-    margin-top: 0.85rem;
-    padding-top: 0.85rem;
-  }
-
   .matchday-desktop-detail .mm-bracket-league__title {
     font-size: 0.8125rem;
     letter-spacing: 0.05em;
@@ -1380,11 +1381,6 @@
     padding-top: 0.7rem;
   }
 
-  .mm-scroll .mm-bracket-league {
-    margin-top: 0.9rem;
-    padding-top: 0.9rem;
-  }
-
   .mm-scroll .mm-bracket-league__title {
     font-size: 0.8125rem;
     letter-spacing: 0.05em;
@@ -1505,5 +1501,640 @@
 @media (prefers-reduced-motion: reduce) {
   .mm-card--needs-pick {
     animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   TAPPABLE LEAGUE ROWS — comeback + path selection now happens directly in the
+   league lists: every option is a bordered row with a radio circle, your pick
+   moves between rows. Read-only rows keep the old flat look.
+   --------------------------------------------------------------------------- */
+.mm-bracket-league__row--tap {
+  width: 100%;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.55rem;
+  background: color-mix(in oklch, var(--bg-surface) 88%, var(--text-primary) 3%);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mm-bracket-league__row--tap + .mm-bracket-league__row--tap {
+  margin-top: 0.35rem;
+}
+
+.mm-bracket-league__row--tap:hover {
+  border-color: color-mix(in oklch, var(--pitch) 40%, var(--border-strong));
+}
+
+.mm-bracket-league__row--picked {
+  border-color: color-mix(in oklch, var(--pitch) 65%, transparent);
+  background: var(--pitch-dim);
+}
+
+.mm-bracket-league__select {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+}
+
+.mm-bracket-league__pts-hint {
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #e8c56a;
+  white-space: nowrap;
+}
+
+.mm-radio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in oklch, var(--text-muted) 70%, transparent);
+  font-size: 0.7rem;
+  color: #fff;
+  transition: all 0.15s ease;
+}
+
+.mm-radio--on {
+  border-color: var(--pitch);
+  background: var(--pitch);
+}
+
+.mm-bracket-league__hint {
+  align-self: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   "IF YOUR CALL LANDS" — live single-game projection pill under the scoreline,
+   plus the tap-through bottom sheet with the reshuffled mini-table.
+   --------------------------------------------------------------------------- */
+.mm-impact {
+  padding: 0 0.65rem 0.45rem;
+}
+
+.imp-pill {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in oklch, var(--pitch) 35%, var(--border-strong));
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in oklch, var(--pitch) 14%, var(--bg-elevated)),
+    var(--bg-elevated) 65%
+  );
+  font-size: 0.71875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: border-color 0.15s ease;
+}
+
+.imp-pill:hover {
+  border-color: color-mix(in oklch, var(--pitch) 60%, var(--border-strong));
+}
+
+.imp-pill__badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.imp-pill__spark {
+  flex-shrink: 0;
+}
+
+.imp-pill__label {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--pitch-glow);
+}
+
+/* On the compact mobile pill, stats read inline — label hidden, icon/value
+   only — same dense line as before. Desktop turns each into a labeled column. */
+.imp-pill__divider {
+  display: none;
+}
+
+.imp-pill__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.imp-pill__stat-k {
+  display: none;
+}
+
+.imp-pill__stat-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.imp-pill__move--up { color: var(--agree); }
+.imp-pill__move--down { color: var(--wrong); }
+.imp-pill__gap { color: var(--text-muted); font-weight: 800; }
+.imp-pill__gap--top { color: var(--agree); }
+
+.imp-pill__earn {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--agree) 16%, var(--bg-elevated));
+  color: var(--agree);
+  font-weight: 900;
+}
+
+.imp-pill__earn--neg {
+  background: color-mix(in oklch, var(--wrong) 14%, var(--bg-elevated));
+  color: var(--wrong);
+}
+
+.imp-pill__caret {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   DESKTOP — plenty of width, so the pill spells itself out: a labeled stat
+   strip (Leader / Your rank / Lead-behind by / You'd earn) separated by
+   vertical dividers, instead of one dense run of icons and numbers.
+   --------------------------------------------------------------------------- */
+@media (min-width: 720px) {
+  .imp-pill {
+    gap: 0.9rem;
+    padding: 0.65rem 1.1rem;
+    font-size: 0.8125rem;
+  }
+
+  .imp-pill__divider {
+    display: block;
+    flex-shrink: 0;
+    width: 1px;
+    align-self: stretch;
+    background: color-mix(in oklch, var(--pitch) 20%, var(--border-strong));
+  }
+
+  .imp-pill__stat {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  .imp-pill__stat-k {
+    display: block;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .imp-pill__stat-v {
+    font-size: 0.875rem;
+    font-weight: 900;
+    color: var(--text-primary);
+  }
+
+  .imp-pill__leader {
+    color: #e8c56a;
+  }
+}
+
+.imp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(6, 6, 10, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.imp-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 34rem;
+  max-height: min(78vh, 40rem);
+  border: 1px solid var(--border-strong);
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+  background: var(--bg-surface);
+  padding: 0.5rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 720px) {
+  .imp-overlay { align-items: center; }
+  .imp-sheet {
+    border-bottom: 1px solid var(--border-strong);
+    border-radius: 1rem;
+  }
+}
+
+.imp-sheet__grab {
+  align-self: center;
+  width: 2.4rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--border-strong);
+  margin-bottom: 0.55rem;
+}
+
+@media (min-width: 720px) {
+  .imp-sheet__grab { display: none; }
+}
+
+.imp-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.imp-sheet__title {
+  font-size: 0.8125rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.imp-sheet__sub {
+  margin-top: 0.15rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.imp-sheet__close {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.imp-sheet__close:hover { color: var(--text-primary); }
+
+.imp-board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.imp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.55rem;
+  background: var(--bg-elevated);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.imp-row--me {
+  outline: 1px solid color-mix(in oklch, var(--pitch) 55%, transparent);
+  background: var(--pitch-dim);
+}
+
+.imp-row--leader { background: color-mix(in oklch, #e8c56a 9%, var(--bg-elevated)); }
+.imp-row--leader.imp-row--me { background: var(--pitch-dim); }
+
+.imp-row__rank {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 2.2rem;
+  font-weight: 900;
+}
+
+.imp-row__move { font-size: 0.625rem; font-weight: 900; }
+.imp-row__move--up { color: var(--agree); }
+.imp-row__move--down { color: var(--wrong); }
+
+.imp-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.imp-row__you {
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: var(--pitch);
+  font-size: 0.5625rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.imp-row__tags {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.imp-tag {
+  padding: 0.08rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.imp-tag--brkt { background: rgba(47, 107, 255, 0.16); color: var(--pitch-glow); }
+.imp-tag--cb { background: rgba(52, 211, 153, 0.14); color: var(--agree); }
+.imp-tag--path { background: rgba(232, 184, 74, 0.14); color: var(--predict-bright); }
+.imp-tag--score { background: rgba(52, 211, 153, 0.14); color: var(--agree); }
+.imp-tag--neg { background: rgba(240, 97, 109, 0.14); color: var(--wrong); }
+
+.imp-row__delta {
+  flex-shrink: 0;
+  min-width: 2rem;
+  text-align: right;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.imp-row__delta--pos { color: var(--agree); }
+.imp-row__delta--neg { color: var(--wrong); }
+
+.imp-row__total {
+  flex-shrink: 0;
+  min-width: 2.1rem;
+  text-align: right;
+  font-size: 0.8125rem;
+  font-weight: 900;
+  color: var(--text-primary);
+}
+
+.imp-sheet__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+.imp-sheet__verdict {
+  font-size: 0.71875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.imp-sheet__sim {
+  flex-shrink: 0;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: var(--pitch);
+  font-size: 0.71875rem;
+  font-weight: 900;
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.imp-sheet__sim:hover { filter: brightness(1.12); }
+
+/* ---------------------------------------------------------------------------
+   COMPACT LEAGUE REFINEMENTS — tighter blocks, smaller pills, rowhead+divider
+   anatomy for editable rows, checkbox-only selection state, dotted ghosts for
+   players with no prediction yet.
+   --------------------------------------------------------------------------- */
+.mm-bracket-league__pill {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.625rem;
+}
+
+.mm-bracket-league__pill--ghost {
+  border: 1px dashed color-mix(in oklch, var(--text-muted) 55%, transparent);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.mm-ghost-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+/* Editable rows: [flag + title …space… checkbox] / divider / member pills */
+.mm-bracket-league__row--tap {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.mm-bracket-league__rowhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mm-bracket-league__divider {
+  display: block;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Selection reads from the checkbox alone — no full-tile fill. */
+.mm-bracket-league__row--picked {
+  background: color-mix(in oklch, var(--bg-surface) 88%, var(--text-primary) 3%);
+  border-color: color-mix(in oklch, var(--pitch) 45%, var(--border-strong));
+}
+
+/* Match the rounded-rect language of the rest of the detail cards. */
+.imp-pill {
+  border-radius: 0.55rem;
+}
+
+@media (min-width: 1024px) {
+  .matchday-desktop-detail .mm-bracket-league__title {
+    margin-bottom: 0.4rem;
+  }
+  .matchday-desktop-detail .mm-bracket-league__row {
+    padding: 0.3rem 0.15rem;
+  }
+  .matchday-desktop-detail .mm-bracket-league__row--tap {
+    padding: 0.45rem 0.6rem;
+  }
+  .matchday-desktop-detail .mm-bracket-league__team {
+    font-size: 0.8125rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .mm-scroll .mm-bracket-league__row {
+    padding: 0.3rem 0.15rem;
+  }
+  .mm-scroll .mm-bracket-league__row--tap {
+    padding: 0.45rem 0.6rem;
+  }
+  .mm-scroll .mm-bracket-league__team {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Info hierarchy inside the league blocks: title > rows > helper notes.
+   Explainer lines ("ARG is out of this game…", "How does this one get
+   decided?") are de-emphasized to small muted copy. */
+.mm-comeback__league .mm-comeback__note,
+.mm-path__league .mm-path__note {
+  margin: 0.15rem 0 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.mm-comeback__league .mm-comeback__dead {
+  gap: 0.25rem;
+  font-size: 0.65rem;
+}
+
+.mm-comeback__league .mm-comeback__dead img {
+  width: 0.95rem;
+  height: 0.7rem;
+}
+
+.mm-ghost-row .mm-bracket-league__hint {
+  font-size: 0.5625rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 1024px) {
+  .matchday-desktop-detail .mm-comeback__note,
+  .matchday-desktop-detail .mm-path__note {
+    font-size: 0.6875rem;
+  }
+}
+
+/* Ghosts read as a gentle warning — dashed outline with a faint red tint. */
+.mm-bracket-league__pill--ghost {
+  border-color: color-mix(in oklch, var(--wrong) 38%, transparent);
+  color: color-mix(in oklch, var(--wrong) 45%, var(--text-muted));
+}
+
+/* Impact pill hugs the same gutters as the detail cards in every context. */
+@media (min-width: 1024px) {
+  .matchday-desktop-detail .mm-impact {
+    padding: 0 1.375rem 0.55rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .mm-scroll .mm-impact {
+    padding: 0 1.5rem 0.55rem;
+  }
+}
+
+/* Bracket-pick members under each side's flag in the scoreline header. */
+.mm-scoreline-picks {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 0.4rem;
+  padding: 0 0.85rem 0.55rem;
+}
+
+.mm-scoreline-picks__side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.mm-scoreline-picks__side--right {
+  grid-column: 3;
+  justify-content: flex-end;
+}
+
+.mm-scoreline-picks__pts {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  font-size: 0.5625rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e8c56a;
+  white-space: nowrap;
+}
+
+.mm-scoreline-picks__side--won .mm-bracket-league__pill {
+  border-color: color-mix(in oklch, var(--agree) 35%, var(--border-strong));
+  background: color-mix(in oklch, var(--agree) 12%, var(--bg-elevated));
+  color: var(--agree);
+}
+
+.mm-scoreline-picks__side--lost .mm-bracket-league__pill {
+  border-color: color-mix(in oklch, var(--wrong) 30%, var(--border-strong));
+  background: color-mix(in oklch, var(--wrong) 10%, var(--bg-elevated));
+  color: color-mix(in oklch, var(--wrong) 85%, var(--text-secondary));
+}
+
+@media (min-width: 1024px) {
+  .matchday-desktop-detail .mm-scoreline-picks {
+    padding: 0 1.375rem 0.65rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .mm-scroll .mm-scoreline-picks {
+    padding: 0 1.5rem 0.65rem;
   }
 }

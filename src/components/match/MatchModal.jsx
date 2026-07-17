@@ -30,6 +30,8 @@ import {
   PATH_SKIP,
   PATH_LABELS,
 } from "../../lib/scoring";
+import { computeMatchImpact, scenarioForImpact } from "../../lib/matchImpact";
+import { ImpactStrip } from "./ImpactStrip";
 import { fmtKickoff, goalMinuteVal, flagSrc, flagSrcSet, liveMinute } from "../../lib/format";
 import { goalMatchPhase } from "../team/journeyHelpers";
 import { ROUNDS, THIRD_PLACE } from "../../lib/rounds";
@@ -251,61 +253,17 @@ function initials(name) {
   return name.trim().slice(0, 2).toUpperCase();
 }
 
-function BracketPicksLeague({ match, bracketPicks, played, pointsHint }) {
-  const rows = [
-    { team: match.team1, picks: bracketPicks.team1 },
-    { team: match.team2, picks: bracketPicks.team2 },
-  ].filter((row) => row.picks.length > 0);
-
-  if (rows.length === 0) return null;
-
-  return (
-    <div className="mm-bracket-league">
-      <div className="mm-league-head">
-        <p className="mm-bracket-league__title">League bracket picks</p>
-        {pointsHint != null && <span className="mm-league-pts">+{pointsHint} if correct</span>}
-      </div>
-      {rows.map(({ team, picks }) => {
-        const won = played && match.winner?.id === team.id;
-        const lost = played && match.winner && match.winner.id !== team.id;
-        return (
-          <div
-            key={team.id}
-            className={[
-              "mm-bracket-league__row",
-              won && "mm-bracket-league__row--right",
-              lost && "mm-bracket-league__row--wrong",
-            ].filter(Boolean).join(" ")}
-          >
-            <span className="mm-bracket-league__team">
-              <img src={flagSrc(team.iso2, 40)} alt="" />
-              {team.code}
-              {won && <span className="mdi mdi-check" aria-hidden="true" />}
-              {lost && <span className="mdi mdi-close" aria-hidden="true" />}
-            </span>
-            <span className="mm-bracket-league__names">
-              {picks.map((p) => (
-                <span key={p.uid} className="mm-bracket-league__pill">
-                  {p.name}
-                </span>
-              ))}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /** Comeback picks league — who re-picked which team for a dead-bracket knockout
  *  game (everyone whose bracket team is out), grouped by team with the +10 shown
- *  on the winning side once played. */
-function ComebackLeague({ match, played, youPickId, youRisked = false, comebackPicks, title, pointsHint }) {
+ *  on the winning side once played. With `canEdit`, the same rows double as the
+ *  editor: tap a team row to move your pick onto it (tap again to clear). */
+function ComebackLeague({ match, played, youPickId, youRisked = false, comebackPicks, title, pointsHint, canEdit = false, onPickTeam, note = null, riskUI = null, ghosts = [] }) {
   const youPill = youPickId ? [{ uid: "__you__", name: "You", me: true, risked: youRisked }] : [];
   const rows = [
     { team: match.team1, picks: [...(youPickId === match.team1?.id ? youPill : []), ...comebackPicks.team1] },
     { team: match.team2, picks: [...(youPickId === match.team2?.id ? youPill : []), ...comebackPicks.team2] },
-  ].filter((row) => row.team && row.picks.length > 0);
+  ].filter((row) => row.team && (canEdit || row.picks.length > 0));
 
   const header = title && (
     <div className="mm-league-head">
@@ -327,54 +285,112 @@ function ComebackLeague({ match, played, youPickId, youRisked = false, comebackP
   return (
     <div className="mm-bracket-league mm-comeback__league">
       {header}
+      {note}
       {rows.map(({ team, picks }) => {
         const won = played && match.winner?.id === team.id;
         const lost = played && match.winner && match.winner.id !== team.id;
-        return (
-          <div
-            key={team.id}
-            className={[
-              "mm-bracket-league__row",
-              won && "mm-bracket-league__row--right",
-              lost && "mm-bracket-league__row--wrong",
-            ].filter(Boolean).join(" ")}
-          >
-            <span className="mm-bracket-league__team">
-              <img src={flagSrc(team.iso2, 40)} alt="" />
-              {team.code}
-              {won && <span className="mdi mdi-check" aria-hidden="true" />}
-              {lost && <span className="mdi mdi-close" aria-hidden="true" />}
-              {won && <span className="mm-comeback__pts">+{MATCHDAY_PICK_POINTS}</span>}
-            </span>
-            <span className="mm-bracket-league__names">
-              {picks.map((p) => (
-                <span
-                  key={p.uid}
-                  className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
-                >
-                  {p.name}
-                  {p.risked && <span className="mdi mdi-fire mm-comeback__pill-risk" title="Risked it" aria-label="Risked it" />}
+        const mine = youPickId === team.id;
+        const rowClass = [
+          "mm-bracket-league__row",
+          won && "mm-bracket-league__row--right",
+          lost && "mm-bracket-league__row--wrong",
+          canEdit && "mm-bracket-league__row--tap",
+          canEdit && mine && "mm-bracket-league__row--picked",
+        ].filter(Boolean).join(" ");
+        const label = (
+          <span className="mm-bracket-league__team">
+            <img src={flagSrc(team.iso2, 40)} alt="" />
+            {canEdit ? team.name : team.code}
+            {won && <span className="mdi mdi-check" aria-hidden="true" />}
+            {lost && <span className="mdi mdi-close" aria-hidden="true" />}
+            {won && <span className="mm-comeback__pts">+{MATCHDAY_PICK_POINTS}</span>}
+          </span>
+        );
+        const pills = (
+          <span className="mm-bracket-league__names">
+            {picks.map((p) => (
+              <span
+                key={p.uid}
+                className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
+              >
+                {p.name}
+                {p.risked && <span className="mdi mdi-fire mm-comeback__pill-risk" title="Risked it" aria-label="Risked it" />}
+              </span>
+            ))}
+          </span>
+        );
+        const inner = canEdit ? (
+          <>
+            <span className="mm-bracket-league__rowhead">
+              {label}
+              <span className="mm-bracket-league__select" aria-hidden="true">
+                {!mine && <span className="mm-bracket-league__pts-hint">+{pointsHint ?? MATCHDAY_PICK_POINTS}</span>}
+                <span className={mine ? "mm-radio mm-radio--on" : "mm-radio"}>
+                  {mine && <span className="mdi mdi-check" />}
                 </span>
-              ))}
+              </span>
             </span>
+            {picks.length > 0 && (
+              <>
+                <span className="mm-bracket-league__divider" aria-hidden="true" />
+                {pills}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {label}
+            {pills}
+          </>
+        );
+        return canEdit ? (
+          <button
+            key={team.id}
+            type="button"
+            className={rowClass}
+            onClick={() => onPickTeam?.(team.id)}
+            aria-pressed={mine}
+          >
+            {inner}
+          </button>
+        ) : (
+          <div key={team.id} className={rowClass}>
+            {inner}
           </div>
         );
       })}
+      {riskUI}
+      {ghosts.length > 0 && (
+        <div className="mm-ghost-row">
+          <span className="mm-bracket-league__hint">yet to pick</span>
+          {ghosts.map((p) => (
+            <span key={p.uid} className="mm-bracket-league__pill mm-bracket-league__pill--ghost">
+              {p.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 /** Path call league — who called regulation/ET/pens for this knockout game,
- *  grouped by option, with the winning option marked once played. */
-function PathLeague({ match, played, youPick, pathPicks, title }) {
+ *  grouped by option, with the winning option marked once played. With
+ *  `canEdit`, every option row is shown and tappable — your pick moves between
+ *  rows (tap it again to clear). */
+function PathLeague({ match, played, youPick, pathPicks, title, canEdit = false, onPick, ghosts = [] }) {
   const outcome = played
     ? match.phase === "pens" ? "pens" : match.phase === "aet" ? "aet" : match.phase === "ft" ? "reg" : null
     : null;
-  const youPill = youPick ? [{ uid: "__you__", name: "You", me: true }] : [];
+  // No explicit call yet while editing ⇒ you sit on "Won't risk it" by default.
+  const shownPick = youPick ?? (canEdit ? PATH_SKIP : null);
+  const youPill = shownPick ? [{ uid: "__you__", name: "You", me: true }] : [];
   const rows = PATH_CHOICES.map((opt) => ({
     opt,
-    picks: [...(youPick === opt ? youPill : []), ...(pathPicks[opt] || [])],
-  })).filter((row) => row.picks.length > 0);
+    picks: [...(shownPick === opt ? youPill : []), ...(pathPicks[opt] || [])],
+    // Friends with no call ride the default too — shown as dotted ghosts.
+    ghosts: opt === PATH_SKIP ? ghosts : [],
+  })).filter((row) => canEdit || row.picks.length > 0 || row.ghosts.length > 0);
 
   const header = title && (
     <div className="mm-league-head">
@@ -396,36 +412,78 @@ function PathLeague({ match, played, youPick, pathPicks, title }) {
   return (
     <div className="mm-bracket-league mm-path__league">
       {header}
-      {rows.map(({ opt, picks }) => {
+      {canEdit && <p className="mm-path__note">How does this one get decided? Tap a row to call it.</p>}
+      {rows.map(({ opt, picks, ghosts: rowGhosts }) => {
         const graded = opt !== PATH_SKIP;
         const right = graded && played && outcome === opt;
         const wrong = graded && played && outcome != null && outcome !== opt;
-        return (
-          <div
-            key={opt}
-            className={[
-              "mm-bracket-league__row",
-              right && "mm-bracket-league__row--right",
-              wrong && "mm-bracket-league__row--wrong",
-            ].filter(Boolean).join(" ")}
-          >
-            <span className="mm-bracket-league__team">
-              <span className={["mdi", PATH_ICONS[opt]].join(" ")} aria-hidden="true" />
-              {PATH_LABELS[opt]}
-              {right && <span className="mdi mdi-check" aria-hidden="true" />}
-              {wrong && <span className="mdi mdi-close" aria-hidden="true" />}
-              {right && <span className="mm-comeback__pts">+{PATH_CALL_CORRECT_POINTS}</span>}
-            </span>
-            <span className="mm-bracket-league__names">
-              {picks.map((p) => (
-                <span
-                  key={p.uid}
-                  className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
-                >
-                  {p.name}
+        const mine = shownPick === opt;
+        const isSkip = opt === PATH_SKIP;
+        const rowClass = [
+          "mm-bracket-league__row",
+          right && "mm-bracket-league__row--right",
+          wrong && "mm-bracket-league__row--wrong",
+          canEdit && "mm-bracket-league__row--tap",
+          canEdit && mine && "mm-bracket-league__row--picked",
+        ].filter(Boolean).join(" ");
+        const label = (
+          <span className="mm-bracket-league__team">
+            <span className={["mdi", PATH_ICONS[opt]].join(" ")} aria-hidden="true" />
+            {PATH_LABELS[opt]}
+            {right && <span className="mdi mdi-check" aria-hidden="true" />}
+            {wrong && <span className="mdi mdi-close" aria-hidden="true" />}
+            {right && <span className="mm-comeback__pts">+{PATH_CALL_CORRECT_POINTS}</span>}
+          </span>
+        );
+        const pills = (
+          <span className="mm-bracket-league__names">
+            {picks.map((p) => (
+              <span
+                key={p.uid}
+                className={["mm-bracket-league__pill", p.me && "mm-bracket-league__pill--you"].filter(Boolean).join(" ")}
+              >
+                {p.name}
+              </span>
+            ))}
+            {rowGhosts.map((p) => (
+              <span key={p.uid} className="mm-bracket-league__pill mm-bracket-league__pill--ghost">
+                {p.name}
+              </span>
+            ))}
+          </span>
+        );
+        const hasPills = picks.length > 0 || rowGhosts.length > 0;
+        const inner = canEdit ? (
+          <>
+            <span className="mm-bracket-league__rowhead">
+              {label}
+              <span className="mm-bracket-league__select" aria-hidden="true">
+                {!mine && isSkip && <span className="mm-bracket-league__pts-hint">no points</span>}
+                <span className={mine ? "mm-radio mm-radio--on" : "mm-radio"}>
+                  {mine && <span className="mdi mdi-check" />}
                 </span>
-              ))}
+              </span>
             </span>
+            {hasPills && (
+              <>
+                <span className="mm-bracket-league__divider" aria-hidden="true" />
+                {pills}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {label}
+            {pills}
+          </>
+        );
+        return canEdit ? (
+          <button key={opt} type="button" className={rowClass} onClick={() => onPick?.(opt)} aria-pressed={mine}>
+            {inner}
+          </button>
+        ) : (
+          <div key={opt} className={rowClass}>
+            {inner}
           </div>
         );
       })}
@@ -438,7 +496,7 @@ function PathLeague({ match, played, youPick, pathPicks, title }) {
 // the modal (other tabs) and inline in the Matchday master-detail pane.
 // onSaveScorePrediction(slotKey, score|null, match) → boolean.
 // ----------------------------------------------------------------------------
-export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, onSaveMatchdayRisk, onSavePathCallPick, lockTimeMs = null, allowComeback = false, teamById = null }) {
+export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, friends = [], selfUid, onFlagClick, onSaveScorePrediction, onSaveMatchdayPick, onSaveMatchdayRisk, onSavePathCallPick, onOpenSimulator = null, lockTimeMs = null, allowComeback = false, teamById = null }) {
   const slotKey = match ? (match.isKnockout ? numToSlot?.get(match.num) : `rail-${match.num}`) : null;
   const scoreSource = scoreWinners ?? winners;
   const scorePrediction = slotKey ? getScorePrediction(scoreSource, slotKey) : null;
@@ -483,6 +541,26 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
     setScoreB(scorePrediction?.[1] ?? "");
     setIsEditingScore(!scorePrediction);
   }, [scorePrediction?.[0], scorePrediction?.[1], match?.num]);
+
+  // While the score inputs are open, the draft overrides the saved prediction
+  // so the impact strip reacts as you type — before anything is saved.
+  const draftEditing = isEditingScore || !scorePrediction;
+  const impact = useMemo(
+    () =>
+      allowComeback
+        ? computeMatchImpact({
+            match,
+            slotKey,
+            friends,
+            selfUid,
+            myWinners: scoreSource,
+            draftScore: draftEditing ? [scoreA, scoreB] : null,
+            teamById,
+          })
+        : null,
+    [allowComeback, match, slotKey, friends, selfUid, scoreSource, draftEditing, scoreA, scoreB, teamById]
+  );
+  const impactScenario = impact ? scenarioForImpact(slotKey, impact.outcome) : null;
 
   if (!match) return null;
 
@@ -558,7 +636,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const showComebackLeague =
     allowComeback &&
     !!match?.isKnockout &&
-    (comebackPicks.team1.length > 0 || comebackPicks.team2.length > 0 || !!comebackPickId);
+    (canEditComeback || comebackPicks.team1.length > 0 || comebackPicks.team2.length > 0 || !!comebackPickId);
 
   const handleComebackPick = async (teamId) => {
     const next = comebackPickId === teamId ? null : teamId; // tap the current pick again to clear
@@ -585,10 +663,6 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const pathEligible = allowComeback && isPathCallEligible(match);
   const pathPick = pathEligible ? getPathCallPick(scoreSource, slotKey) : null;
   const canEditPath = pathEligible && upcoming && !!onSavePathCallPick && !!slotKey;
-  const pathOutcome = played ? (match.phase === "pens" ? "pens" : match.phase === "aet" ? "aet" : match.phase === "ft" ? "reg" : null) : null;
-  const pathIsGraded = pathPick && pathPick !== PATH_SKIP;
-  const pathCorrect = played && pathIsGraded && pathOutcome ? pathPick === pathOutcome : null;
-
   const handlePathPick = async (path) => {
     const next = pathPick === path ? null : path; // tap the current pick again to clear
     const ok = await onSavePathCallPick?.(slotKey, next, match);
@@ -600,7 +674,7 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
   const showPathLeague =
     allowComeback &&
     !!match?.isKnockout &&
-    (pathPicks.reg.length > 0 || pathPicks.aet.length > 0 || pathPicks.pens.length > 0 || !!pathPick);
+    (canEditPath || pathPicks.reg.length > 0 || pathPicks.aet.length > 0 || pathPicks.pens.length > 0 || !!pathPick);
 
   const statusLabel = played
     ? `${match.phase === "aet" ? "AFTER EXTRA TIME" : match.phase === "pens" ? "PENALTIES" : "FULL TIME"}${match.kickoff ? ` · ${match.kickoff.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase()}` : ""}`
@@ -638,254 +712,143 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
           <TeamSide team={match.team2} refName={match.ref2} won={played && match.winnerIdx === 1} onFlagClick={onFlagClick} />
         </div>
 
-        <div className="mm-grid">
-          {/* LEFT — member details first (who picked what), match detail below */}
-          <div className="mm-card mm-card--picks">
-            {bracketPickTeam && (
-              <div className="mm-bracket-pick">
-                <span className="mm-bracket-pick__label">Your bracket pick:</span>
-                <span
+        {/* Who picked whom to advance — pills straight under each side's flag */}
+        {match.isKnockout && (bracketPicks.team1.length > 0 || bracketPicks.team2.length > 0 || bracketPickTeam) && (
+          <div className="mm-scoreline-picks">
+            {[
+              { team: match.team1, picks: bracketPicks.team1, side: "left" },
+              { team: match.team2, picks: bracketPicks.team2, side: "right" },
+            ].map(({ team, picks, side }) => {
+              const youToo = !!team && bracketPickId === team.id;
+              const won = played && !!team && match.winner?.id === team.id;
+              const lost = played && !!team && match.winner && match.winner.id !== team.id;
+              return (
+                <div
+                  key={side}
                   className={[
-                    "mm-bracket-pick__team",
-                    bracketPickCorrect === true && "mm-bracket-pick__team--right",
-                    bracketPickCorrect === false && "mm-bracket-pick__team--wrong",
+                    "mm-scoreline-picks__side",
+                    side === "right" && "mm-scoreline-picks__side--right",
+                    won && "mm-scoreline-picks__side--won",
+                    lost && "mm-scoreline-picks__side--lost",
                   ].filter(Boolean).join(" ")}
                 >
-                  <img src={flagSrc(bracketPickTeam.iso2, 40)} alt="" />
-                  {bracketPickTeam.code}
-                  {bracketPickCorrect === true && <span className="mdi mdi-check" />}
-                  {bracketPickCorrect === false && <span className="mdi mdi-close" />}
-                </span>
-              </div>
+                  {youToo && (
+                    <span className="mm-bracket-league__pill mm-bracket-league__pill--you">
+                      You
+                      {bracketPickCorrect === true && <span className="mdi mdi-check" />}
+                      {bracketPickCorrect === false && <span className="mdi mdi-close" />}
+                    </span>
+                  )}
+                  {picks.map((p) => (
+                    <span key={p.uid} className="mm-bracket-league__pill">{p.name}</span>
+                  ))}
+                </div>
+              );
+            })}
+            {roundPointsForSlot(slotKey) != null && (
+              <span className="mm-scoreline-picks__pts">+{roundPointsForSlot(slotKey)} advance</span>
             )}
+          </div>
+        )}
 
-            <BracketPicksLeague
+        {/* If-your-call-lands projection — this game only, live as you type */}
+        {impact && (
+          <div className="mm-impact">
+            <ImpactStrip
+              impact={impact}
               match={match}
-              bracketPicks={bracketPicks}
-              played={played}
-              pointsHint={roundPointsForSlot(slotKey)}
+              onOpenSimulator={impactScenario && onOpenSimulator ? () => onOpenSimulator(impactScenario) : null}
             />
+          </div>
+        )}
 
-            {/* Who else re-picked a winner because their bracket team is out */}
+        <div className="mm-grid">
+          {/* LEFT — member details first (who picked what), match detail below */}
+          <div className="mm-picks-col">
+            {/* Comeback picks — its own card; the league doubles as your editor:
+                tap a team row to move your pick onto it. */}
             {showComebackLeague && (
-              <ComebackLeague
-                title="League comeback picks"
-                pointsHint={MATCHDAY_PICK_POINTS}
-                match={match}
-                played={played}
-                youPickId={comebackPickId}
-                youRisked={comebackRisked}
-                comebackPicks={comebackPicks}
-              />
-            )}
-
-            {/* Still to pick a comeback — so you can nudge friends whose team is out */}
-            {allowComeback && upcoming && missingComeback.length > 0 && (
-              <div className="mm-missing mm-missing--comeback">
-                <p className="mm-missing__label">Still to pick a comeback ({missingComeback.length})</p>
-                <p className="mm-missing__names">{missingComeback.map((f) => f.name).join(", ")}</p>
+              <div className="mm-card">
+                <ComebackLeague
+                  title={canEditComeback ? "Comeback pick" : "League comeback picks"}
+                  pointsHint={comebackPayout?.correct ?? MATCHDAY_PICK_POINTS}
+                  match={match}
+                  played={played}
+                  youPickId={comebackPickId}
+                  youRisked={comebackRisked}
+                  comebackPicks={comebackPicks}
+                  canEdit={canEditComeback}
+                  onPickTeam={handleComebackPick}
+                  ghosts={upcoming ? missingComeback : []}
+                  note={
+                    canEditComeback ? (
+                      <p className="mm-comeback__note">
+                        {deadBracketTeam ? (
+                          <span className="mm-comeback__dead">
+                            <img src={flagSrc(deadBracketTeam.iso2, 40)} alt="" />
+                            {deadBracketTeam.code}
+                          </span>
+                        ) : (
+                          <span className="mm-comeback__dead">Your bracket pick</span>
+                        )}{" "}
+                        is out of this game — back a new winner to keep scoring it.
+                      </p>
+                    ) : null
+                  }
+                  riskUI={
+                    comebackRiskEligible && (canEditComebackRisk || comebackRisked) ? (
+                      <div className={["mm-comeback__risk", comebackRisked && "mm-comeback__risk--on"].filter(Boolean).join(" ")}>
+                        <div className="mm-comeback__risk-text">
+                          <span className="mm-comeback__risk-title">
+                            <span className="mdi mdi-fire" aria-hidden="true" /> Risk it
+                          </span>
+                          <span className="mm-comeback__risk-hint">
+                            {comebackStakes(slotKey, true).wrong} if wrong · +{comebackStakes(slotKey, true).correct} if right
+                          </span>
+                        </div>
+                        {canEditComebackRisk ? (
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={comebackRisked}
+                            onClick={handleComebackRisk}
+                            className={["mm-comeback__risk-toggle", comebackRisked && "mm-comeback__risk-toggle--on"].filter(Boolean).join(" ")}
+                          >
+                            <span className="mm-comeback__risk-knob" />
+                          </button>
+                        ) : (
+                          <span className="mm-comeback__risk-locked">risked</span>
+                        )}
+                      </div>
+                    ) : null
+                  }
+                />
               </div>
             )}
 
-            {/* Who's called regulation/ET/pens for this one */}
+            {/* Path calls — its own card; same element shows everyone's calls
+                and takes yours. Players yet to call ride "Won't risk it" as
+                dotted ghosts. */}
             {showPathLeague && (
-              <PathLeague
-                title="League path calls"
-                match={match}
-                played={played}
-                youPick={pathPick}
-                pathPicks={pathPicks}
-              />
-            )}
-
-            {/* Still to make a path call */}
-            {allowComeback && upcoming && missingPathCall.length > 0 && (
-              <div className="mm-missing mm-missing--path">
-                <p className="mm-missing__label">Still to make a path call ({missingPathCall.length})</p>
-                <p className="mm-missing__names">{missingPathCall.map((f) => f.name).join(", ")}</p>
+              <div className="mm-card">
+                <PathLeague
+                  title={canEditPath ? "Path call" : "League path calls"}
+                  match={match}
+                  played={played}
+                  youPick={pathPick}
+                  pathPicks={pathPicks}
+                  canEdit={canEditPath}
+                  onPick={handlePathPick}
+                  ghosts={upcoming ? missingPathCall : []}
+                />
               </div>
             )}
-
-            {/* Match detail — venue, time, goals — lowest priority, sits at the bottom */}
-            <div className="mm-matchinfo">
-              <p className="mm-card__title">Match detail</p>
-              <div className="mm-meta">
-                {match.kickoff && <span><span className="mdi mdi-clock-outline" /> {fmtKickoff(match.kickoff)}</span>}
-                {match.ground && <span><span className="mdi mdi-map-marker-outline" /> {match.ground}</span>}
-              </div>
-              <GoalTimeline match={match} />
-            </div>
           </div>
 
-          {/* RIGHT — your calls: your comeback winner pick (when your team is out) + score calls */}
+          {/* RIGHT — score calls only; comeback + path editing now lives in the
+              league lists on the left, so nothing is duplicated here. */}
           {teamsConfirmed && (
             <div className="mm-calls-col">
-              {comebackEligible && (
-                <div className={["mm-card mm-comeback-card", canEditComeback && !comebackPickId && "mm-card--needs-pick"].filter(Boolean).join(" ")}>
-                  <div className="mm-card__head">
-                    <p className="mm-card__title">Comeback pick</p>
-                    <span className="mm-card__hint">
-                      {comebackRisked
-                        ? `+${comebackPayout.correct} right · ${comebackPayout.wrong} wrong`
-                        : `+${comebackPayout.correct} if correct`}
-                    </span>
-                  </div>
-
-                  <p className="mm-comeback__note">
-                    {deadBracketTeam ? (
-                      <span className="mm-comeback__dead">
-                        <img src={flagSrc(deadBracketTeam.iso2, 40)} alt="" />
-                        {deadBracketTeam.code}
-                      </span>
-                    ) : (
-                      <span className="mm-comeback__dead">Your bracket pick</span>
-                    )}{" "}
-                    is out of this game —{" "}
-                    {canEditComeback
-                      ? "back a new winner to keep scoring it."
-                      : "your replacement winner for it."}
-                  </p>
-
-                  {canEditComeback ? (
-                    <div className="mm-comeback__choices">
-                      {[match.team1, match.team2].map((team) => {
-                        const selected = comebackPickId === team.id;
-                        return (
-                          <button
-                            key={team.id}
-                            type="button"
-                            onClick={() => handleComebackPick(team.id)}
-                            className={["mm-comeback__choice", selected && "mm-comeback__choice--selected"].filter(Boolean).join(" ")}
-                            aria-pressed={selected}
-                          >
-                            <img src={flagSrc(team.iso2, 40)} alt="" />
-                            <span className="mm-comeback__choice-name">{team.name}</span>
-                            <span className="mm-comeback__choice-tick">
-                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : `+${comebackPayout.correct}`}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : comebackPickId ? (
-                    (() => {
-                      const myTeam = comebackPickId === match.team1?.id ? match.team1 : match.team2;
-                      const won = played && match.winner?.id === comebackPickId;
-                      return (
-                        <div
-                          className={[
-                            "mm-comeback__mine",
-                            played && (won ? "mm-comeback__mine--hit" : "mm-comeback__mine--miss"),
-                          ].filter(Boolean).join(" ")}
-                        >
-                          <img src={flagSrc(myTeam.iso2, 40)} alt="" />
-                          <span className="mm-comeback__choice-name">{myTeam.name}</span>
-                          {comebackRisked && (
-                            <span className="mdi mdi-fire mm-comeback__pill-risk" title="Risked it" aria-label="Risked it" />
-                          )}
-                          {played ? (
-                            <span className="mm-comeback__mine-pts">
-                              {won ? `+${comebackPayout.correct}` : comebackPayout.wrong ? comebackPayout.wrong : "0"}
-                            </span>
-                          ) : (
-                            <span className="mm-comeback__choice-tick">your pick</span>
-                          )}
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <p className="mm-calls__empty">No comeback pick made.</p>
-                  )}
-
-                  {/* Optional "risk it" — third place & final only: trade the safe
-                      +10/0 for a bigger payout with points on the line. */}
-                  {comebackRiskEligible && (canEditComebackRisk || comebackRisked) && (
-                    <div className={["mm-comeback__risk", comebackRisked && "mm-comeback__risk--on"].filter(Boolean).join(" ")}>
-                      <div className="mm-comeback__risk-text">
-                        <span className="mm-comeback__risk-title">
-                          <span className="mdi mdi-fire" aria-hidden="true" /> Risk it
-                        </span>
-                        <span className="mm-comeback__risk-hint">
-                          {comebackStakes(slotKey, true).wrong} if wrong · +{comebackStakes(slotKey, true).correct} if right
-                        </span>
-                      </div>
-                      {canEditComebackRisk ? (
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={comebackRisked}
-                          onClick={handleComebackRisk}
-                          className={["mm-comeback__risk-toggle", comebackRisked && "mm-comeback__risk-toggle--on"].filter(Boolean).join(" ")}
-                        >
-                          <span className="mm-comeback__risk-knob" />
-                        </button>
-                      ) : (
-                        <span className="mm-comeback__risk-locked">risked</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {pathEligible && (
-                <div className={["mm-card mm-path-card", canEditPath && !pathPick && "mm-card--needs-pick"].filter(Boolean).join(" ")}>
-                  <div className="mm-card__head">
-                    <p className="mm-card__title">Path call</p>
-                    <span className="mm-card__hint">+{PATH_CALL_CORRECT_POINTS} right · {PATH_CALL_WRONG_POINTS} wrong</span>
-                  </div>
-
-                  <p className="mm-path__note">How does this one get decided?</p>
-
-                  {canEditPath ? (
-                    <div className="mm-path__choices">
-                      {PATH_CHOICES.map((opt) => {
-                        const selected = pathPick === opt;
-                        const isSkip = opt === PATH_SKIP;
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => handlePathPick(opt)}
-                            className={[
-                              "mm-path__choice",
-                              isSkip && "mm-path__choice--skip",
-                              selected && "mm-path__choice--selected",
-                            ].filter(Boolean).join(" ")}
-                            aria-pressed={selected}
-                          >
-                            <span className={["mdi", PATH_ICONS[opt], "mm-path__choice-icon"].join(" ")} aria-hidden="true" />
-                            <span className="mm-path__choice-name">{PATH_LABELS[opt]}</span>
-                            <span className="mm-path__choice-tick">
-                              {selected ? <span className="mdi mdi-check" aria-hidden="true" /> : isSkip ? "no points" : null}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : pathPick ? (
-                    <div
-                      className={[
-                        "mm-path__mine",
-                        pathPick === PATH_SKIP && "mm-path__mine--skip",
-                        played && pathIsGraded && (pathCorrect ? "mm-path__mine--hit" : "mm-path__mine--miss"),
-                      ].filter(Boolean).join(" ")}
-                    >
-                      <span className={["mdi", PATH_ICONS[pathPick], "mm-path__choice-icon"].join(" ")} aria-hidden="true" />
-                      <span className="mm-path__choice-name">{PATH_LABELS[pathPick]}</span>
-                      {pathPick === PATH_SKIP ? (
-                        <span className="mm-path__choice-tick">sat out</span>
-                      ) : played ? (
-                        <span className="mm-path__mine-pts">{pathCorrect ? `+${PATH_CALL_CORRECT_POINTS}` : PATH_CALL_WRONG_POINTS}</span>
-                      ) : (
-                        <span className="mm-path__choice-tick">your pick</span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="mm-calls__empty">No path call made.</p>
-                  )}
-                </div>
-              )}
-
               <div className="mm-card">
               <div className="mm-card__head">
                 <p className="mm-card__title">{played ? "Score calls — graded" : "Score calls"}</p>
@@ -1003,19 +966,30 @@ export function MatchDetailBody({ match, winners, scoreWinners, numToSlot, frien
               </div>
 
               {missingPredictions.length > 0 && (
-                <div className="mm-missing">
-                  <p className="mm-missing__label">
-                    {played ? `Sat this one out (${missingPredictions.length})` : `Haven't called it yet (${missingPredictions.length})`}
-                  </p>
-                  <p className="mm-missing__names">
-                    {missingPredictions.map((f) => f.name).join(", ")}
-                    {played && " — zero points, zero excuses."}
-                  </p>
+                <div className="mm-ghost-row">
+                  <span className="mm-bracket-league__hint">{played ? "sat out" : "yet to call"}</span>
+                  {missingPredictions.map((f) => (
+                    <span key={f.uid} className="mm-bracket-league__pill mm-bracket-league__pill--ghost">
+                      {f.name}
+                    </span>
+                  ))}
                 </div>
               )}
               </div>
             </div>
           )}
+
+          {/* Match detail — venue, time, goals — lowest priority, last on mobile */}
+          <div className="mm-card mm-card--info">
+            <div className="mm-matchinfo">
+              <p className="mm-card__title">Match detail</p>
+              <div className="mm-meta">
+                {match.kickoff && <span><span className="mdi mdi-clock-outline" /> {fmtKickoff(match.kickoff)}</span>}
+                {match.ground && <span><span className="mdi mdi-map-marker-outline" /> {match.ground}</span>}
+              </div>
+              <GoalTimeline match={match} />
+            </div>
+          </div>
         </div>
 
         {/* Clear Confirmation Dialog */}
@@ -1092,6 +1066,7 @@ export function MatchModal({
   onSaveMatchdayPick,
   onSaveMatchdayRisk,
   onSavePathCallPick,
+  onOpenSimulator = null,
   lockTimeMs = null,
   teamById = null,
   allowComeback = false,
@@ -1159,6 +1134,7 @@ export function MatchModal({
           onSaveMatchdayPick={onSaveMatchdayPick}
           onSaveMatchdayRisk={onSaveMatchdayRisk}
           onSavePathCallPick={onSavePathCallPick}
+          onOpenSimulator={onOpenSimulator}
           lockTimeMs={lockTimeMs}
           teamById={teamById}
           allowComeback={allowComeback}

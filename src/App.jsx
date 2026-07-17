@@ -29,6 +29,7 @@ import {
   gradeScorePrediction,
   gradeWinners,
 } from "./lib/scoring";
+import { encodeScenario } from "./lib/simulator";
 import { fmtCountdown, fmtTimeOnly } from "./lib/format";
 
 import { BrandBadge } from "./components/common/icons";
@@ -407,6 +408,23 @@ export default function App() {
     return true;
   }, []);
 
+  // Impact-pill deep link — stash a one-game scenario in the URL hash and jump
+  // to Standings; StandingsPage auto-opens the Scenario Lab when #sim= is set.
+  const openSimulatorWithScenario = useCallback(
+    (scenario) => {
+      const encoded = encodeScenario(scenario);
+      if (!encoded) return;
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}#sim=${encoded}`
+      );
+      setMatchModal(null);
+      setTab("standings");
+    },
+    [setTab]
+  );
+
   const activeLockTimeMs = viewingFriend ? viewingFriend.lockedAt : lockedAt;
   const scorableActual = useMemo(
     () => buildScorableActual(actual, slotMatches, activeLockTimeMs),
@@ -673,10 +691,11 @@ export default function App() {
         onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
         onSaveMatchdayRisk={(slotKey, on, m) => saveMatchdayRisk(slotKey, on, byNum.get(m.num) ?? m)}
         onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
+        onOpenSimulator={openSimulatorWithScenario}
         lockTimeMs={activeLockTimeMs}
         teamById={teamById}
         allowComeback={isViewingSelf}
-        friends={friends}
+        friends={rankedFriends}
         selfUid={uid}
       />
 
@@ -761,6 +780,7 @@ export default function App() {
           onSaveMatchdayPick={(slotKey, teamId, m) => saveMatchdayPick(slotKey, teamId, byNum.get(m.num) ?? m)}
           onSaveMatchdayRisk={(slotKey, on, m) => saveMatchdayRisk(slotKey, on, byNum.get(m.num) ?? m)}
           onSavePathCallPick={(slotKey, path, m) => savePathCallPick(slotKey, path, byNum.get(m.num) ?? m)}
+          onOpenSimulator={openSimulatorWithScenario}
           lockTimeMs={activeLockTimeMs}
           teamById={teamById}
           onOpenMatch={setMatchModal}

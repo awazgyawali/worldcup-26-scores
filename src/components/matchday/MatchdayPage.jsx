@@ -75,6 +75,7 @@ function MatchdayDesktopDetail({
   onSaveMatchdayPick,
   onSaveMatchdayRisk,
   onSavePathCallPick,
+  onOpenSimulator,
   lockTimeMs,
   teamById,
   allowComeback,
@@ -99,6 +100,7 @@ function MatchdayDesktopDetail({
         onSaveMatchdayPick={onSaveMatchdayPick}
         onSaveMatchdayRisk={onSaveMatchdayRisk}
         onSavePathCallPick={onSavePathCallPick}
+        onOpenSimulator={onOpenSimulator}
         lockTimeMs={lockTimeMs}
         teamById={teamById}
         allowComeback={allowComeback}
@@ -120,6 +122,7 @@ function MatchdayMobileView({
   onSaveMatchdayPick,
   onSaveMatchdayRisk,
   onSavePathCallPick,
+  onOpenSimulator,
   lockTimeMs,
   teamById,
   allowComeback,
@@ -159,6 +162,7 @@ function MatchdayMobileView({
           onSaveMatchdayPick={onSaveMatchdayPick}
           onSaveMatchdayRisk={onSaveMatchdayRisk}
           onSavePathCallPick={onSavePathCallPick}
+          onOpenSimulator={onOpenSimulator}
           lockTimeMs={lockTimeMs}
           teamById={teamById}
           allowComeback={allowComeback}
@@ -416,6 +420,7 @@ export function MatchdayPage({
   onSaveMatchdayPick,
   onSaveMatchdayRisk,
   onSavePathCallPick,
+  onOpenSimulator = null,
   lockTimeMs = null,
   teamById = null,
   onFlagClick,
@@ -549,6 +554,7 @@ export function MatchdayPage({
                   onSaveMatchdayPick={onSaveMatchdayPick}
                   onSaveMatchdayRisk={onSaveMatchdayRisk}
                   onSavePathCallPick={onSavePathCallPick}
+                  onOpenSimulator={onOpenSimulator}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}
                   allowComeback={isViewingSelf}
@@ -568,6 +574,7 @@ export function MatchdayPage({
                   onSaveMatchdayPick={onSaveMatchdayPick}
                   onSaveMatchdayRisk={onSaveMatchdayRisk}
                   onSavePathCallPick={onSavePathCallPick}
+                  onOpenSimulator={onOpenSimulator}
                   lockTimeMs={lockTimeMs}
                   teamById={teamById}
                   allowComeback={isViewingSelf}
