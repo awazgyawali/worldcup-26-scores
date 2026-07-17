@@ -176,7 +176,7 @@ toggle bar** in the comeback card (risked picks get a fire marker in the
 standings and the league comeback list)
 (`mdrisk-<slotKey>`, helpers `getMatchdayRisk`/`setMatchdayRisk`/
 `comebackStakes`/`isComebackRiskEligible`) trades the safe +10/0 for
-**−10/+20** (third place) or **−20/+40** (final) — see
+**−10/+20** (third place) or **−15/+30** (final) — see
 `MATCHDAY_RISK_STAKES`. A bracket pick on these games is worth far more
 (third place 40, final 60), so an un-risked comeback shouldn't ride even with
 it. Clearing the comeback pick clears the flag; `App.jsx`'s `saveMatchdayRisk`

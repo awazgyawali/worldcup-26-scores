@@ -4,7 +4,7 @@ import { flagSrc, flagSrcSet } from "../../lib/format";
 // ----------------------------------------------------------------------------
 // TEAM ROW — [flag] CODE [verdict] [score]
 // ----------------------------------------------------------------------------
-export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, isMatchWinner, align = "left", compareDot = null, compareLabel = null }) {
+export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, isMatchWinner, align = "left", compareDot = null, compareLabel = null, isEliminated = false }) {
   const empty = !team;
   const disabled = empty || locked || readOnly || started;
   const right = align === "right";
@@ -28,6 +28,11 @@ export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
     text = "text-[var(--text-primary)] font-bold";
   } else if (isDimmed) {
     text = "text-[var(--text-muted)]";
+  }
+  // Reality already knocked this team out of this fixture — grey it out.
+  if (isEliminated && !verdict) {
+    strip += " team-strip--out";
+    text = "text-[var(--text-muted)] opacity-70";
   }
 
   return (
@@ -70,8 +75,11 @@ export function TeamRow({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
             e.stopPropagation();
             onFlagClick?.(team);
           }}
-          title={`${team.name} — tournament journey`}
-          className="h-3.5 w-5.5 shrink-0 cursor-pointer rounded-[3px] object-cover shadow-sm ring-1 ring-black/40 transition hover:scale-110 hover:ring-[var(--gold)]/60"
+          title={isEliminated ? `${team.name} — eliminated` : `${team.name} — tournament journey`}
+          className={[
+            "h-3.5 w-5.5 shrink-0 cursor-pointer rounded-[3px] object-cover shadow-sm ring-1 ring-black/40 transition hover:scale-110 hover:ring-[var(--gold)]/60",
+            isEliminated && !verdict ? "team-out-flag" : "",
+          ].join(" ")}
         />
       )}
 

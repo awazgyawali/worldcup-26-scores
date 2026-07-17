@@ -6,7 +6,27 @@ import {
   applyScenario,
   rankFriendsAgainst,
   slotEarners,
+  orderFutureSlotsForDisplay,
+  buildScenarioFromFriend,
+  friendsMatchingScenario,
+  encodeScenario,
+  decodeScenario,
 } from "../../lib/simulator";
+
+/** Read a shared scenario out of the URL hash (`#sim=...`). */
+export function readScenarioHash() {
+  if (typeof window === "undefined") return "";
+  const h = window.location.hash;
+  return h.startsWith("#sim=") ? decodeURIComponent(h.slice(5)) : "";
+}
+
+/** Write (or clear) the scenario hash without touching path/search/history. */
+function writeScenarioHash(encoded) {
+  if (typeof window === "undefined") return;
+  const base = `${window.location.pathname}${window.location.search}`;
+  const url = encoded ? `${base}#sim=${encoded}` : base;
+  window.history.replaceState(window.history.state, "", url);
+}
 
 const PATH_UI = [
   { key: "reg", label: "REG", full: "Regulation" },
@@ -242,9 +262,121 @@ function LeaderRow({ row, maxGain }) {
   );
 }
 
+function useIsMobile(breakpoint = 820) {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= breakpoint
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+/**
+ * Mobile picks UI: a swipeable snap carousel of big fixture cards (70% width,
+ * next card peeking) with a passive dots/progress row underneath.
+ */
+function MobilePicks({ slots, setCount, friends, simActual, simSlotMatches, onSet, onClear, expandedSlot, onExpand, onShare, copied }) {
+  const railRef = useRef(null);
+  const [active, setActive] = useState(0);
+
+  const onScroll = () => {
+    const el = railRef.current;
+    if (!el) return;
+    const center = el.scrollLeft + el.clientWidth / 2;
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < el.children.length; i++) {
+      const c = el.children[i];
+      const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - center);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    setActive(best);
+  };
+
+  return (
+    <div className="scn-mob">
+      <div className="scn-mob__rail" ref={railRef} onScroll={onScroll}>
+        {slots.map((slot) => (
+          <div className="scn-mob__slide" key={slot.slotKey}>
+            <FixtureCard
+              slot={slot}
+              friends={friends}
+              simActual={simActual}
+              simSlotMatches={simSlotMatches}
+              onSet={(choice) => onSet(slot.slotKey, choice)}
+              onClear={() => onClear(slot.slotKey)}
+              expanded={expandedSlot === slot.slotKey}
+              onExpand={onExpand}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="scn-mob__meta">
+        <div className="scn-mob__dots" aria-hidden="true">
+          {slots.map((s, i) => (
+            <span
+              key={s.slotKey}
+              className={[
+                "scn-dot",
+                s.choice?.winner && "scn-dot--set",
+                !s.ready && "scn-dot--wait",
+                i === active && "scn-dot--active",
+              ].filter(Boolean).join(" ")}
+            />
+          ))}
+        </div>
+        <span className="scn-mob__count">
+          {Math.min(active + 1, slots.length)}/{slots.length}{setCount > 0 ? ` · ${setCount} set` : ""}
+        </span>
+        {setCount > 0 && (
+          <button
+            type="button"
+            className={["scn-lab__share", "scn-lab__share--meta", copied && "scn-lab__share--copied"].filter(Boolean).join(" ")}
+            onClick={onShare}
+          >
+            {copied ? "Copied ✓" : "Share"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ScenarioBody({ friends, currentUid, actual, slotMatches, teams, byNum, onClose }) {
-  const [scenario, setScenario] = useState({});
+  // A shared link (#sim=...) seeds the scenario so the recipient sees the
+  // exact same what-if world.
+  const [scenario, setScenario] = useState(() => decodeScenario(readScenarioHash()));
   const [expandedSlot, setExpandedSlot] = useState(null);
+  const [autofillUid, setAutofillUid] = useState("");
+  const [copied, setCopied] = useState(false);
+  const isMobile = useIsMobile();
+
+  // Keep the URL hash in sync with the scenario, and clear it when the lab closes.
+  useEffect(() => {
+    writeScenarioHash(encodeScenario(scenario));
+  }, [scenario]);
+  useEffect(() => () => writeScenarioHash(""), []);
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}${window.location.pathname}${window.location.search}#sim=${encodeScenario(scenario)}`;
+    try {
+      if (navigator.share && /Mobi|Android/i.test(navigator.userAgent)) {
+        await navigator.share({ title: "What-If Simulator", url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* user dismissed the share sheet — nothing to do */
+    }
+  };
 
   const lockedFriends = useMemo(() => friends.filter((f) => f.locked && !f.abandoned), [friends]);
 
@@ -260,6 +392,7 @@ function ScenarioBody({ friends, currentUid, actual, slotMatches, teams, byNum, 
   );
   // Only games that haven't been decided in reality — the future.
   const futureSlots = useMemo(() => slots.filter((s) => !s.decidedReal), [slots]);
+  const displaySlots = useMemo(() => orderFutureSlotsForDisplay(futureSlots), [futureSlots]);
 
   const { simActual, simSlotMatches } = useMemo(
     () => applyScenario(actual, slotMatches, teams, scenario),
@@ -291,57 +424,131 @@ function ScenarioBody({ friends, currentUid, actual, slotMatches, teams, byNum, 
     return best;
   }, [projected]);
 
-  const setSlot = (slotKey, choice) => setScenario((prev) => ({ ...prev, [slotKey]: choice }));
-  const clearSlot = (slotKey) =>
+  const setSlot = (slotKey, choice) => {
+    setAutofillUid("");
+    setScenario((prev) => ({ ...prev, [slotKey]: choice }));
+  };
+  const clearSlot = (slotKey) => {
+    setAutofillUid("");
     setScenario((prev) => {
       const next = { ...prev };
       delete next[slotKey];
       return next;
     });
+  };
+  const handleAutofill = (uid) => {
+    setAutofillUid(uid);
+    if (!uid) return;
+    const friend = lockedFriends.find((f) => f.uid === uid);
+    if (!friend) return;
+    setScenario(buildScenarioFromFriend(friend, actual, slotMatches, teams));
+  };
+
+  // Players whose predictions agree with every outcome set so far. The player
+  // the scenario was autofilled from trivially matches, so leave them out.
+  const matchingFriends = useMemo(() => {
+    if (setCount === 0) return [];
+    return friendsMatchingScenario(lockedFriends, slots, scenario)
+      .filter((f) => f.uid !== autofillUid);
+  }, [setCount, lockedFriends, slots, scenario, autofillUid]);
+
+  const autofillControl = lockedFriends.length > 0 && (
+    <label className="scn-lab__autofill">
+      <span className="scn-lab__autofill-label">Autofill</span>
+      <select
+        className="scn-lab__autofill-select"
+        value={autofillUid}
+        onChange={(e) => handleAutofill(e.target.value)}
+        aria-label="Autofill from a player's predictions"
+      >
+        <option value="">Player predictions…</option>
+        {lockedFriends.map((f) => (
+          <option key={f.uid} value={f.uid}>
+            {f.name}{f.uid === currentUid ? " (you)" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
     <>
-      <div className="scn-lab__head">
-        <div className="scn-lab__title-wrap">
-          <span className="scn-lab__spark" aria-hidden="true">⚡</span>
-          <div>
-            <h3 className="scn-lab__title">What-If Simulator</h3>
-            <p className="scn-lab__sub">Pick outcomes for upcoming games and watch the table react — nothing is saved.</p>
+      <div className="scn-lab__top">
+        <div className="scn-lab__head">
+          <div className="scn-lab__title-row">
+            <div className="scn-lab__title-wrap">
+              <span className="scn-lab__spark" aria-hidden="true">⚡</span>
+              <h3 className="scn-lab__title">What-If Simulator</h3>
+            </div>
+            <button type="button" className="scn-lab__close" onClick={onClose} aria-label="Close simulator">✕</button>
           </div>
-        </div>
-        <div className="scn-lab__head-actions">
-          {setCount > 0 && (
-            <button type="button" className="scn-lab__reset" onClick={() => setScenario({})}>
-              Reset {setCount} pick{setCount > 1 ? "s" : ""}
-            </button>
+          <p className="scn-lab__sub">Pick outcomes for upcoming games and watch the table react — nothing is saved.</p>
+          <div className="scn-lab__toolbar">
+            {isMobile && autofillControl}
+            {!isMobile && setCount > 0 && (
+              <button
+                type="button"
+                className={["scn-lab__share", copied && "scn-lab__share--copied"].filter(Boolean).join(" ")}
+                onClick={handleShare}
+                title="Copy a link to this scenario"
+              >
+                {copied ? "Copied ✓" : "Share"}
+              </button>
+            )}
+          </div>
+          {matchingFriends.length > 0 && (
+            <div className="scn-lab__match">
+              <span className="scn-lab__match-k">Same picks as</span>
+              {matchingFriends.map((f) => (
+                <span key={f.uid} className="scn-lab__match-name">
+                  {f.name}{f.uid === currentUid ? " (you)" : ""}
+                </span>
+              ))}
+            </div>
           )}
-          <button type="button" className="scn-lab__close" onClick={onClose} aria-label="Close simulator">✕</button>
         </div>
-      </div>
 
-      <div className="scn-lab__ribbon">
-        <div className="scn-ribbon__stat">
-          <span className="scn-ribbon__k">Outcomes set</span>
-          <span className="scn-ribbon__v">{setCount}</span>
-        </div>
-        <div className="scn-ribbon__stat">
-          <span className="scn-ribbon__k">Projected leader</span>
-          <span className="scn-ribbon__v scn-ribbon__v--accent">{leader ? leader.name : "—"}</span>
-        </div>
-        <div className="scn-ribbon__stat">
-          <span className="scn-ribbon__k">Biggest climber</span>
-          <span className="scn-ribbon__v">
-            {biggestMover ? (<>{biggestMover.name} <span className="scn-ribbon__move">▲{biggestMover.rankDelta}</span></>) : "—"}
-          </span>
+        <div className="scn-lab__ribbon">
+          <div className="scn-ribbon__stat">
+            <span className="scn-ribbon__k">Outcomes set</span>
+            <span className="scn-ribbon__v">{setCount}</span>
+          </div>
+          <div className="scn-ribbon__stat">
+            <span className="scn-ribbon__k">Projected leader</span>
+            <span className="scn-ribbon__v scn-ribbon__v--accent">{leader ? leader.name : "—"}</span>
+          </div>
+          <div className="scn-ribbon__stat">
+            <span className="scn-ribbon__k">Biggest climber</span>
+            <span className="scn-ribbon__v">
+              {biggestMover ? (<>{biggestMover.name} <span className="scn-ribbon__move">▲{biggestMover.rankDelta}</span></>) : "—"}
+            </span>
+          </div>
+          {!isMobile && <div className="scn-ribbon__autofill">{autofillControl}</div>}
         </div>
       </div>
 
       <div className="scn-lab__body">
         <div className="scn-lab__picks nice-scroll">
-          <div className="scn-lab__picks-head">Upcoming games · {futureSlots.length}</div>
-          {futureSlots.length > 0 ? (
+          {!isMobile && <div className="scn-lab__picks-head">Upcoming games · {futureSlots.length}</div>}
+          {displaySlots.length === 0 ? (
+            <p className="scn-lab__done">Every knockout game is already decided — nothing left to simulate.</p>
+          ) : isMobile ? (
+            <MobilePicks
+              slots={displaySlots}
+              setCount={setCount}
+              friends={lockedFriends}
+              simActual={simActual}
+              simSlotMatches={simSlotMatches}
+              onSet={setSlot}
+              onClear={clearSlot}
+              expandedSlot={expandedSlot}
+              onExpand={setExpandedSlot}
+              onShare={handleShare}
+              copied={copied}
+            />
+          ) : (
             <div className="scn-fixtures">
-              {futureSlots.map((slot) => (
+              {displaySlots.map((slot) => (
                 <FixtureCard
                   key={slot.slotKey}
                   slot={slot}
@@ -355,8 +562,6 @@ function ScenarioBody({ friends, currentUid, actual, slotMatches, teams, byNum, 
                 />
               ))}
             </div>
-          ) : (
-            <p className="scn-lab__done">Every knockout game is already decided — nothing left to simulate.</p>
           )}
         </div>
 

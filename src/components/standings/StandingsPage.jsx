@@ -3,7 +3,7 @@ import { ProviderIcon } from "../common/ProviderIcon";
 import { recentPickResults } from "../../lib/scoring";
 import { getPickProgress } from "../../lib/bracket";
 import { StandingsFriendDetail } from "./StandingsFriendDetail";
-import { ScenarioLab } from "./ScenarioLab";
+import { ScenarioLab, readScenarioHash } from "./ScenarioLab";
 
 function useIsMobile(breakpoint = 767) {
   const [isMobile, setIsMobile] = useState(
@@ -167,7 +167,8 @@ export function StandingsPage({
   teams = [],
 }) {
   const isMobile = useIsMobile();
-  const [showSim, setShowSim] = useState(false);
+  // A shared what-if link (#sim=...) opens the simulator straight away.
+  const [showSim, setShowSim] = useState(() => !!readScenarioHash());
 
   const locked = friends.filter((f) => f.locked);
   const open = friends.filter((f) => !f.locked);

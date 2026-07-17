@@ -227,4 +227,114 @@ export function slotEarners(friends, slot, match, actualWinnerId) {
   return rows;
 }
 
+/** Display order for upcoming games — third place before the final. */
+export function orderFutureSlotsForDisplay(futureSlots) {
+  const third = futureSlots.find((s) => s.slotKey === "third-0");
+  const final = futureSlots.find((s) => s.slotKey === "final-0");
+  const rest = futureSlots.filter((s) => s.slotKey !== "third-0" && s.slotKey !== "final-0");
+  return [...(third ? [third] : []), ...(final ? [final] : []), ...rest];
+}
+
+function friendChoiceForSlot(friend, slot) {
+  const winners = friend.winners;
+  const bracketPick = winners[slot.slotKey];
+  let winner = null;
+  if (bracketPick === slot.teamA?.id || bracketPick === slot.teamB?.id) winner = bracketPick;
+  else {
+    const cb = getMatchdayPick(winners, slot.slotKey);
+    if (cb === slot.teamA?.id || cb === slot.teamB?.id) winner = cb;
+  }
+  if (!winner) return null;
+
+  let path = getPathCallPick(winners, slot.slotKey);
+  if (!path || path === PATH_SKIP) path = "reg";
+
+  const score = getScorePrediction(winners, slot.slotKey);
+  return { winner, path, score: score ?? null };
+}
+
+const sameScore = (a, b) => {
+  const na = normalizeScorePair(a);
+  const nb = normalizeScorePair(b);
+  if (!na && !nb) return true;
+  return !!na && !!nb && na[0] === nb[0] && na[1] === nb[1];
+};
+
+/**
+ * Players whose predictions agree with every outcome set in the scenario so
+ * far — winner, path call, and score prediction all have to match.
+ * `slots` must be the scenario-resolved slots (from buildScenarioSlots).
+ */
+export function friendsMatchingScenario(friends, slots, scenario) {
+  const setSlots = slots.filter((s) => !s.decidedReal && scenario[s.slotKey]?.winner);
+  if (setSlots.length === 0) return [];
+  return friends.filter((f) =>
+    setSlots.every((s) => {
+      const mine = scenario[s.slotKey];
+      const theirs = friendChoiceForSlot(f, s);
+      if (!theirs || theirs.winner !== mine.winner) return false;
+      if ((theirs.path || "reg") !== (mine.path || "reg")) return false;
+      return sameScore(theirs.score, mine.score);
+    })
+  );
+}
+
+/** Build a full scenario from one player's predictions (cascades through the bracket). */
+export function buildScenarioFromFriend(friend, actual, slotMatches, teams) {
+  const scenario = {};
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const slots = buildScenarioSlots(actual, slotMatches, teams, scenario);
+    for (const slot of slots) {
+      if (slot.decidedReal || !slot.ready || scenario[slot.slotKey]?.winner) continue;
+      const choice = friendChoiceForSlot(friend, slot);
+      if (choice) {
+        scenario[slot.slotKey] = choice;
+        changed = true;
+      }
+    }
+  }
+  return scenario;
+}
+
+// ---------------------------------------------------------------------------
+// URL (de)serialization — a scenario as a compact, shareable string.
+// Format: one segment per slot joined by "_", each segment
+// "slotKey.WINNER.path[.a-b]" e.g. "qf-0.FRA.pens.2-1_final-0.BRA.reg".
+// ---------------------------------------------------------------------------
+const URL_PATHS = new Set(["reg", "aet", "pens"]);
+
+export function encodeScenario(scenario) {
+  const parts = [];
+  for (const [slotKey, c] of Object.entries(scenario || {})) {
+    if (!c?.winner) continue;
+    let part = `${slotKey}.${c.winner}.${URL_PATHS.has(c.path) ? c.path : "reg"}`;
+    const score = normalizeScorePair(c.score);
+    if (score) part += `.${score[0]}-${score[1]}`;
+    parts.push(part);
+  }
+  return parts.join("_");
+}
+
+export function decodeScenario(str) {
+  const scenario = {};
+  if (!str) return scenario;
+  for (const part of String(str).split("_")) {
+    const [slotKey, winner, path, scoreStr] = part.split(".");
+    if (!slotKey || !winner || !/^[a-z0-9]+-\d+$/.test(slotKey)) continue;
+    let score = null;
+    if (scoreStr && /^\d-\d$/.test(scoreStr)) {
+      const [a, b] = scoreStr.split("-");
+      score = [Number(a), Number(b)];
+    }
+    scenario[slotKey] = {
+      winner,
+      path: URL_PATHS.has(path) ? path : "reg",
+      score,
+    };
+  }
+  return scenario;
+}
+
 export { PATH_OPTIONS };

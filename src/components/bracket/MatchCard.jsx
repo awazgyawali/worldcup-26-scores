@@ -1,13 +1,15 @@
 import { motion } from "framer-motion";
 import { TeamRow } from "./TeamRow";
+import { getEliminationInfo } from "../../lib/bracket";
 import { mapPredictedScores } from "../../lib/scoring";
 import { flagSrc, fmtMatchTime, liveMinute, phaseLabel } from "../../lib/format";
 import { ROUNDS } from "../../lib/rounds";
 
-function MobileListTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, actualWinner }) {
+function MobileListTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, actualWinner, isEliminated }) {
   const empty = !team;
   const disabled = empty || locked || readOnly || started;
   const displayScore = score != null ? score : predictedScore;
+  const greyed = isEliminated && !verdict;
 
   return (
     <button
@@ -18,6 +20,7 @@ function MobileListTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
         "mobile-match-card__team",
         isPicked && "mobile-match-card__team--picked",
         isDimmed && "mobile-match-card__team--dimmed",
+        greyed && "opacity-60",
         verdict === "correct" && "mobile-match-card__team--correct",
         verdict === "wrong" && "mobile-match-card__team--wrong",
       ].filter(Boolean).join(" ")}
@@ -29,7 +32,7 @@ function MobileListTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
           <img
             src={flagSrc(team.iso2)}
             alt=""
-            className="mobile-match-card__flag"
+            className={greyed ? "mobile-match-card__flag team-out-flag" : "mobile-match-card__flag"}
             onClick={(e) => {
               e.stopPropagation();
               onFlagClick?.(team);
@@ -53,10 +56,11 @@ function MobileListTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick
 // ----------------------------------------------------------------------------
 // MATCH CARD (bracket)
 // ----------------------------------------------------------------------------
-function CompactTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore }) {
+function CompactTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, locked, readOnly, started, score, predictedScore, isEliminated }) {
   const empty = !team;
   const disabled = empty || locked || readOnly || started;
   const displayScore = score != null ? score : predictedScore;
+  const greyed = isEliminated && !verdict;
 
   let tone = "text-[var(--text-secondary)]";
   if (verdict === "correct") tone = "text-[var(--pitch-glow)] font-bold";
@@ -64,6 +68,7 @@ function CompactTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, l
   else if (verdict === "missed") tone = "text-[var(--pitch-glow)]/85 font-semibold";
   else if (isPicked) tone = "text-[var(--text-primary)] font-bold";
   else if (isDimmed) tone = "text-[var(--text-muted)]";
+  if (greyed) tone = "text-[var(--text-muted)] opacity-70";
 
   return (
     <button
@@ -90,7 +95,7 @@ function CompactTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, l
           <img
             src={flagSrc(team.iso2)}
             alt=""
-            className="match-compact__flag"
+            className={greyed ? "match-compact__flag team-out-flag" : "match-compact__flag"}
             onClick={(e) => {
               e.stopPropagation();
               onFlagClick?.(team);
@@ -104,7 +109,7 @@ function CompactTeam({ team, isPicked, isDimmed, verdict, onPick, onFlagClick, l
   );
 }
 
-export function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false, revealGrades = false, scorePrediction, predictionInfo, viewerName, isViewingOther, compareVerdict = null, comparePickId = null, compareName = null, compact = false, showRound = false, mobileList = false }) {
+export function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId, onPick, actualId, match, slotMatches = null, highlight = null, onFlagClick, onOpenMatch, align = "left", readOnly = false, revealGrades = false, scorePrediction, predictionInfo, viewerName, isViewingOther, compareVerdict = null, comparePickId = null, compareName = null, compact = false, showRound = false, mobileList = false }) {
   const ready = !!a && !!b;
   const decided = !!winnerId;
 
@@ -112,6 +117,21 @@ export function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId
   const pairIsReal =
     match?.team1 && match?.team2 && a && b &&
     ((match.team1.id === a.id && match.team2.id === b.id) || (match.team1.id === b.id && match.team2.id === a.id));
+
+  // A predicted team is "out" of this fixture when reality says it can't get
+  // here: the real pair is known and doesn't include it, or it already lost a
+  // knockout game. Third place is special — semi losers ARE its participants,
+  // while finalists (semi winners) can't drop into it.
+  const elim = getEliminationInfo(slotMatches);
+  const realPairKnown = !!(match?.team1 && match?.team2);
+  const teamIsOut = (team) => {
+    if (!elim || !team || pairIsReal) return false;
+    if (realPairKnown) return team.id !== match.team1.id && team.id !== match.team2.id;
+    if (slotKey === "third-0") {
+      return elim.semiWinners.has(team.id) || (elim.losers.has(team.id) && !elim.semiLosers.has(team.id));
+    }
+    return elim.losers.has(team.id);
+  };
 
   let scoreA = null;
   let scoreB = null;
@@ -140,6 +160,7 @@ export function MatchCard({ slotKey, roundIdx, matchIdx, teams: [a, b], winnerId
     isPicked: decided && winnerId === team?.id,
     isDimmed: decided && winnerId !== team?.id,
     verdict: verdictFor(team),
+    isEliminated: teamIsOut(team),
   });
 
   const compareTag = compareName ? compareName.slice(0, 2).toUpperCase() : null;

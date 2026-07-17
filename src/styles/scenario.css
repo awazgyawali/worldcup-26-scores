@@ -75,13 +75,22 @@
   .scn-lab { max-width: 100%; height: 100dvh; border-radius: 0; border: none; }
 }
 
+.scn-lab__top {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .scn-lab__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 1.25rem;
+}
+.scn-lab__title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  gap: 0.75rem;
 }
 .scn-lab__title-wrap { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
 .scn-lab__spark {
@@ -91,43 +100,125 @@
 }
 @keyframes scn-pulse { 0%, 100% { opacity: 0.75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.12); } }
 .scn-lab__title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.01em; }
-.scn-lab__sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
-.scn-lab__head-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-.scn-lab__reset {
-  padding: 0.4rem 0.75rem; border-radius: 0.55rem; font-size: 0.72rem; font-weight: 700;
-  color: var(--text-secondary); border: 1px solid var(--border-strong); background: transparent; cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+.scn-lab__sub { font-size: 0.75rem; color: var(--text-muted); margin: 0; }
+.scn-lab__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
-.scn-lab__reset:hover { color: #fff; border-color: var(--wrong); }
+.scn-lab__autofill { display: flex; align-items: center; gap: 0.35rem; }
+.scn-lab__autofill-label {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
+}
+.scn-lab__autofill-select {
+  max-width: 9rem; padding: 0.38rem 1.6rem 0.38rem 0.55rem; border-radius: 0.55rem;
+  font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);
+  border: 1px solid var(--border-strong); background: var(--bg-surface);
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.5rem center;
+}
+.scn-lab__autofill-select:hover { border-color: var(--pitch); color: #fff; }
+.scn-lab__autofill-select:focus { outline: none; border-color: var(--pitch); }
+.scn-lab__share {
+  padding: 0.4rem 0.75rem; border-radius: 0.55rem; font-size: 0.72rem; font-weight: 700;
+  color: var(--pitch-glow); border: 1px solid color-mix(in oklch, var(--pitch) 45%, transparent);
+  background: color-mix(in oklch, var(--pitch) 10%, transparent); cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.scn-lab__share:hover { color: #fff; border-color: var(--pitch); }
+.scn-lab__share--copied { color: var(--agree); border-color: color-mix(in oklch, var(--agree) 50%, transparent); background: color-mix(in oklch, var(--agree) 12%, transparent); }
 .scn-lab__close {
   width: 2rem; height: 2rem; border-radius: 0.55rem; font-size: 0.85rem;
   color: var(--text-muted); border: 1px solid var(--border); background: transparent; cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s; flex-shrink: 0;
 }
 .scn-lab__close:hover { color: #fff; border-color: var(--border-strong); }
 
+/* "Same picks as …" — players whose predictions match the current scenario */
+.scn-lab__match {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem;
+}
+.scn-lab__match-k {
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.scn-lab__match-name {
+  font-size: 0.66rem; font-weight: 800;
+  padding: 0.14rem 0.45rem; border-radius: 999px;
+  color: var(--agree); background: color-mix(in oklch, var(--agree) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--agree) 35%, transparent);
+}
+
 /* ---- ribbon of headline stats -------------------------------------------- */
 .scn-lab__ribbon {
-  display: flex; flex-wrap: wrap; gap: 0.5rem 2rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 2rem;
   padding: 0.7rem 1.25rem;
-  border-bottom: 1px solid var(--border);
   background: rgba(0, 0, 0, 0.18);
 }
+.scn-ribbon__autofill { margin-left: auto; }
 .scn-ribbon__stat { display: flex; flex-direction: column; gap: 0.1rem; }
 .scn-ribbon__k { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
 .scn-ribbon__v { font-size: 0.9rem; font-weight: 800; }
 .scn-ribbon__v--accent { color: var(--pitch-glow); }
 .scn-ribbon__move { color: var(--agree); font-size: 0.78rem; }
 
+@media (max-width: 820px) {
+  .scn-lab__head {
+    gap: 0.45rem;
+    padding: 0.6rem 0.75rem 0.55rem;
+  }
+  .scn-lab__title-row { gap: 0.5rem; }
+  .scn-lab__title-wrap { gap: 0.4rem; }
+  .scn-lab__spark { font-size: 0.95rem; animation: none; }
+  .scn-lab__title { font-size: 0.9rem; }
+  .scn-lab__sub { display: none; }
+  .scn-lab__toolbar { gap: 0.4rem; flex-wrap: nowrap; }
+  .scn-lab__autofill { flex: 1 1 auto; min-width: 0; }
+  .scn-lab__autofill-label { display: none; }
+  .scn-lab__autofill-select {
+    max-width: none; width: 100%;
+    padding: 0.45rem 1.5rem 0.45rem 0.6rem;
+    font-size: 0.72rem;
+  }
+  .scn-lab__share--meta {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.64rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: 999px;
+  }
+  .scn-lab__close {
+    width: 1.8rem; height: 1.8rem;
+    font-size: 0.8rem;
+    border-radius: 0.45rem;
+  }
+  /* leader/climber live in the projected table — the stat ribbon is redundant */
+  .scn-lab__ribbon { display: none; }
+}
+
 /* ---- body split: games list | board -------------------------------------- */
 .scn-lab__body { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 22rem minmax(0, 1fr); }
-@media (max-width: 820px) { .scn-lab__body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 820px) {
+  .scn-lab__body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+}
 
 .scn-lab__picks {
   min-height: 0; overflow-y: auto;
   padding: 0.9rem 0.9rem 1.1rem; border-right: 1px solid var(--border);
 }
-@media (max-width: 820px) { .scn-lab__picks { border-right: none; border-bottom: 1px solid var(--border); } }
+@media (max-width: 820px) {
+  .scn-lab__picks {
+    border-right: none; border-bottom: 1px solid var(--border);
+    overflow: visible;
+    padding: 0.6rem 0.75rem 0.65rem;
+  }
+}
 .scn-lab__picks-head {
   position: sticky; top: -0.9rem; z-index: 1;
   margin: -0.9rem -0.9rem 0.7rem; padding: 0.7rem 0.9rem;
@@ -135,11 +226,61 @@
   backdrop-filter: blur(6px);
   font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
 }
-
 .scn-lab__done { padding: 1.5rem 1rem; text-align: center; color: var(--text-muted); font-size: 0.82rem; }
 
-/* ---- fixture cards (vertical list) --------------------------------------- */
+/* ---- fixture cards (vertical list on desktop) ---------------------------- */
 .scn-fixtures { display: flex; flex-direction: column; gap: 0.6rem; }
+
+/* ---- mobile: swipeable card carousel (70% width, next card peeks) -------- */
+.scn-mob { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.scn-mob__rail {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  overflow-x: auto; overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  margin: 0 -0.75rem; padding: 0.1rem 0.75rem 0.2rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scn-mob__rail::-webkit-scrollbar { display: none; }
+.scn-mob__slide {
+  flex: 0 0 70%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.scn-mob__slide .scn-card { width: 100%; }
+
+.scn-mob__meta {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0 0.1rem;
+}
+.scn-mob__dots { flex: 1 1 auto; display: flex; align-items: center; gap: 0.3rem; min-width: 0; flex-wrap: wrap; }
+.scn-dot {
+  width: 0.38rem; height: 0.38rem; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  transition: width 0.2s, background 0.2s, opacity 0.2s;
+}
+.scn-dot--set { background: var(--agree); }
+.scn-dot--wait { opacity: 0.4; }
+.scn-dot--active { width: 0.9rem; background: var(--pitch-glow); opacity: 1; }
+.scn-mob__count {
+  font-size: 0.6rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
+}
+
+/* mobile cards get real touch targets */
+@media (max-width: 820px) {
+  .scn-mob .scn-card { padding: 0.65rem 0.7rem 0.75rem; gap: 0.55rem; }
+  .scn-mob .scn-team { padding: 0.55rem 0.5rem; gap: 0.4rem; }
+  .scn-mob .scn-team__code { font-size: 0.88rem; }
+  .scn-mob .scn-team__flag { width: 1.45rem; height: 1.1rem; }
+  .scn-mob .scn-path__btn { padding: 0.4rem 0.55rem; font-size: 0.68rem; }
+  .scn-mob .scn-score { gap: 0.45rem; }
+  .scn-mob .scn-score__btn { font-size: 0.6rem; padding: 0.18rem 0.5rem; }
+  .scn-mob .scn-score__num { font-size: 1rem; }
+  .scn-mob .scn-card__controls { justify-content: space-between; }
+  .scn-mob .scn-earners { max-height: 8rem; overflow-y: auto; }
+}
 .scn-card {
   border-radius: 0.8rem;
   border: 1px solid var(--border);
@@ -242,7 +383,7 @@
 .scn-tag--neg { color: var(--wrong); background: color-mix(in oklch, var(--wrong) 15%, transparent); }
 
 /* ---- projected leaderboard ----------------------------------------------- */
-.scn-lab__board { padding: 0.9rem 1rem 1.1rem; min-width: 0; min-height: 0; overflow-y: auto; }
+.scn-lab__board { padding: 0.9rem 1rem 1.1rem; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .scn-lb__head {
   position: sticky; top: -0.9rem; z-index: 1;
   margin: -0.9rem -1rem 0.6rem; padding: 0.7rem 1rem;
@@ -263,6 +404,7 @@
   padding: 0.5rem 0.6rem; border-radius: 0.6rem;
   border: 1px solid var(--border);
   background: linear-gradient(180deg, var(--bg-card), var(--bg-surface));
+  min-width: 0;
 }
 .scn-lb__row--me { border-color: color-mix(in oklch, var(--pitch) 45%, transparent); background: color-mix(in oklch, var(--pitch) 8%, var(--bg-card)); }
 .scn-lb__row--leader { border-color: color-mix(in oklch, var(--gold-bright) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in oklch, var(--gold-bright) 25%, transparent); }
@@ -295,4 +437,30 @@
 @media (max-width: 1100px) {
   .scn-lb__row { grid-template-columns: 2.4rem minmax(0, 1fr) 2.6rem 3rem; }
   .scn-lb__bar-wrap { display: none; }
+}
+
+@media (max-width: 820px) {
+  .scn-lab__board { padding: 0.55rem 0.55rem 0.8rem; }
+  .scn-lb__head {
+    top: -0.55rem;
+    margin: -0.55rem -0.55rem 0.45rem;
+    padding: 0.5rem 0.55rem;
+  }
+  .scn-lb { gap: 0.25rem; }
+  .scn-lb__row {
+    grid-template-columns: 2rem minmax(0, 1fr) 2.15rem 2.35rem;
+    gap: 0.32rem;
+    padding: 0.42rem 0.45rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .scn-lb__rank { gap: 0.12rem; }
+  .scn-lb__rank-num { font-size: 0.82rem; min-width: 0.85rem; }
+  .scn-lb__rank-move { font-size: 0.52rem; }
+  .scn-lb__avatar { width: 1.3rem; height: 1.3rem; border-radius: 0.38rem; font-size: 0.52rem; }
+  .scn-lb__name { gap: 0.32rem; }
+  .scn-lb__name-txt { font-size: 0.72rem; }
+  .scn-lb__you { display: none; }
+  .scn-lb__delta { font-size: 0.68rem; }
+  .scn-lb__pts { font-size: 0.82rem; }
 }

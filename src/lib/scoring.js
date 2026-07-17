@@ -287,7 +287,7 @@ export const MATCHDAY_KEY_PREFIX = "md-";
 export const MATCHDAY_RISK_KEY_PREFIX = "mdrisk-";
 export const MATCHDAY_RISK_STAKES = {
   "third-0": { correct: 20, wrong: -10 },
-  "final-0": { correct: 40, wrong: -20 },
+  "final-0": { correct: 30, wrong: -15 },
 };
 
 export const matchdayKey = (slotKey) => MATCHDAY_KEY_PREFIX + slotKey;

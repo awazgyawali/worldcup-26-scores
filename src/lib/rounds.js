@@ -19,7 +19,7 @@ export const SCORE_EXACT_POINTS_BY_ROUND = {
   qf: 30,
   sf: 40,
   final: 50,
-  third: 30,
+  third: 40,
 };
 export const key = (r, m) => `${r}-${m}`;
 /** Every knockout slot the user must fill before locking. */

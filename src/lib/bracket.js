@@ -178,6 +178,34 @@ const buildSlotMatches = (byNum) => {
   return map;
 };
 
+/**
+ * Real-world elimination info, derived from played knockout matches.
+ * - losers: every team that has lost a knockout game (they can't advance)
+ * - semiLosers / semiWinners: split out so the third-place slot can treat
+ *   semi-final losers as alive (they play that game) and finalists as out.
+ * Cached per slotMatches object — it's rebuilt only when results change.
+ */
+const elimCache = new WeakMap();
+function getEliminationInfo(slotMatches) {
+  if (!slotMatches) return null;
+  if (elimCache.has(slotMatches)) return elimCache.get(slotMatches);
+  const losers = new Set();
+  const semiLosers = new Set();
+  const semiWinners = new Set();
+  for (const [k, m] of Object.entries(slotMatches)) {
+    if (m?.status !== "played" || !m.winner || !m.team1 || !m.team2) continue;
+    const loser = m.winner.id === m.team1.id ? m.team2 : m.team1;
+    if (loser) losers.add(loser.id);
+    if (k.startsWith("sf-")) {
+      if (loser) semiLosers.add(loser.id);
+      semiWinners.add(m.winner.id);
+    }
+  }
+  const info = { losers, semiLosers, semiWinners };
+  elimCache.set(slotMatches, info);
+  return info;
+}
+
 /** slot key → actual winning team id (only for finished matches). */
 const buildActual = (slotMatches) => {
   const actual = {};
@@ -196,6 +224,7 @@ export {
   getPickProgress,
   hasBracketPicks,
   buildStarterWinners,
+  getEliminationInfo,
   parseBracketSlotKey,
   getTeamsForBracketSlot,
   slotNeedsPick,

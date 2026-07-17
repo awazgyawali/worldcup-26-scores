@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MatchCard } from "./MatchCard";
 import { Connector, SFPodiumConnector, bracketHighlightFor, BracketGuideLabel } from "./Connectors";
 import { PodiumColumn } from "./PodiumColumn";
@@ -97,6 +97,7 @@ function BracketColumn({ roundIdx, indices, align, winners, teams, onPick, actua
                 onPick={onPick}
                 actualId={actual[rk]}
                 match={match}
+                slotMatches={slotMatches}
                 align={align}
                 highlight={bracketHighlightFor(rk, { guidanceKey, focusPickKey, liveKey, nextKey })}
                 onFlagClick={onFlagClick}
@@ -176,9 +177,31 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
   const compact = useCompactBracket();
   const shared = { winners, teams, onPick, actual, slotMatches, liveKey, nextKey, guidanceKey, focusPickKey, onFlagClick, onOpenMatch, readOnly, revealGrades, stats, isViewingOther, viewerName, teamById, byNum, lockTimeMs, showPoints, compareFriend, compareMap, compact };
 
+  // When the tree overflows (mobile / narrow windows), open centered on the
+  // podium (final card) instead of at the far-left R32 column. Measured off
+  // the podium element itself — the tree's midpoint isn't its visual center —
+  // and after a frame so the layout has settled.
+  const viewportRef = useRef(null);
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const pod = el.querySelector(".podium-final-card") ?? el.querySelector(".podium-column");
+      if (!pod) return;
+      const er = el.getBoundingClientRect();
+      const pr = pod.getBoundingClientRect();
+      el.scrollLeft += (pr.left + pr.width / 2) - (er.left + er.width / 2);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [compact]);
+
+  // Desktop only: glide to the slot that needs attention. On mobile this
+  // anchor scroll would drag the view off to one side and defeat the centered
+  // open — the centered podium is the better starting point there.
   const scrollKey = focusPickKey ?? guidanceKey;
   useEffect(() => {
-    if (!scrollKey) return;
+    if (!scrollKey || compact) return;
     const timer = window.setTimeout(() => {
       document.querySelector(`[data-bracket-slot="${scrollKey}"]`)?.scrollIntoView({
         behavior: "smooth",
@@ -187,7 +210,7 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
       });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [scrollKey]);
+  }, [scrollKey, compact]);
 
   const verdictsFor = (roundIdx, side) => {
     const half = ROUNDS[roundIdx].matches / 2;
@@ -206,7 +229,7 @@ export function ScrollBracket({ winners, teams, onPick, actual, champion, actual
     <div className="bracket-stack">
       {showGuideBanner && <BracketGuideLabel />}
       <BracketSummaryBar winners={winners} actual={actual} compareFriend={compareFriend} compareMap={compareMap} />
-      <div className={["bracket-viewport nice-scroll", compact && "bracket-viewport--compact"].filter(Boolean).join(" ")}>
+      <div ref={viewportRef} className={["bracket-viewport nice-scroll", compact && "bracket-viewport--compact"].filter(Boolean).join(" ")}>
         <div className="bracket-tree">
           <BracketHeaderRow />
           <div className="bracket-body">
