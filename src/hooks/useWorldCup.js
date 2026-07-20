@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { teamFor, isRef } from "../lib/teams";
 import { KNOCKOUT_ROUNDS, ROUND_LABEL, ROUNDS } from "../lib/rounds";
-
-// ----------------------------------------------------------------------------
-// LIVE DATA — openfootball/worldcup.json
-// ----------------------------------------------------------------------------
-const WORLDCUP_JSON_URL =
-  "https://raw.githubusercontent.com/openfootball/worldcup.json/refs/heads/master/2026/worldcup.json";
-const POLL_EVERY_MS = 60_000;
+import worldCupData from "../assets/score.json";
 
 const parseKickoff = (date, timeStr) => {
   if (!date || !timeStr) return null;
@@ -145,12 +139,14 @@ export function useWorldCup(enabled = true) {
   const [error, setError] = useState(null);
   const [, setTick] = useState(0);
 
-  const fetchLive = useCallback(async () => {
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
+
     try {
-      const res = await fetch(WORLDCUP_JSON_URL, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setState(processWorldCupJson(data));
+      setState(processWorldCupJson(worldCupData));
       setLastUpdated(new Date());
       setError(null);
     } catch (e) {
@@ -158,25 +154,10 @@ export function useWorldCup(enabled = true) {
     } finally {
       setLoading(false);
     }
-  }, []);
 
-  useEffect(() => {
-    if (!enabled) {
-      setLoading(true);
-      return;
-    }
-
-    fetchLive();
-    const refreshId = setInterval(fetchLive, POLL_EVERY_MS);
     const tickId = setInterval(() => setTick((t) => t + 1), 1000);
-    const onVisible = () => document.visibilityState === "visible" && fetchLive();
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(refreshId);
-      clearInterval(tickId);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [enabled, fetchLive]);
+    return () => clearInterval(tickId);
+  }, [enabled]);
 
   return { ...state, loading, lastUpdated, error };
 }
